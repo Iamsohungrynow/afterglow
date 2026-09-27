@@ -55,13 +55,13 @@ export function Hero() {
       <div className="relative mx-auto grid w-full max-w-[1400px] flex-1 grid-cols-1 items-center gap-10 px-6 pt-24 pb-10 lg:grid-cols-12 lg:gap-12">
         <div className="lg:col-span-7">
           <h1 className="font-display text-[clamp(30px,8.4vw,44px)] font-medium leading-[1.02] tracking-[-0.01em] text-fg md:text-[clamp(44px,5vw,74px)]">
-            The market closes.
+            Earn yield,
             <br />
-            <em className="font-display italic text-glow">Your credit line doesn&apos;t.</em>
+            <em className="font-display italic text-glow">even while Wall Street sleeps.</em>
           </h1>
           <p className="mt-6 max-w-[50ch] text-[16px] leading-relaxed text-fg-2 md:text-[17px]">
-            Borrow USDG against tokenized stocks at a fixed rate, weekends included. Lenders choose how much weekend risk
-            they take.
+            Lend USDG against tokenized stocks at a fixed rate and earn every hour, weekends included. Borrowers keep their
+            shares. You choose how much weekend risk you take.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-3">
             <LaunchButton large />

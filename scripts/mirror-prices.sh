@@ -9,7 +9,7 @@
 #   MIRROR_PRIVATE_KEY=0x... bash scripts/mirror-prices.sh          # key that owns the demo feeds
 #   bash scripts/mirror-prices.sh --dry-run                          # show what would be published
 #
-# Runs every 10 minutes from .github/workflows/mirror-prices.yml. Needs Foundry's `cast` and node.
+# Runs every 30 minutes from .github/workflows/mirror-prices.yml. Needs Foundry's `cast` and node.
 set -euo pipefail
 
 MAINNET_RPC="${MAINNET_RPC:-https://rpc.mainnet.chain.robinhood.com}"

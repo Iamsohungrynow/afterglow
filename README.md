@@ -93,7 +93,7 @@ Optional env: `RATE_WAD` (default `0.08e18`), `TERM_DAYS` (28; maturity snaps to
 Chainlink publishes equity feeds on Robinhood Chain **mainnet only**, so the testnet markets read a
 Chainlink-compatible `DemoPriceFeed` (same `AggregatorV3Interface`). To keep the demo honest, a GitHub Action
 ([`mirror-prices.yml`](.github/workflows/mirror-prices.yml) → [`scripts/mirror-prices.sh`](scripts/mirror-prices.sh))
-copies every new mainnet Chainlink print for TSLA, AMZN and USDG into the testnet feeds every 10 minutes. The
+copies every new mainnet Chainlink print for TSLA, AMZN and USDG into the testnet feeds every 30 minutes. The
 testnet therefore trades on real prices and freezes over the weekend exactly when mainnet does.
 The integration with the real feeds is covered by fork tests against Robinhood Chain mainnet state
 ([`test/fork/RobinhoodFork.t.sol`](test/fork/RobinhoodFork.t.sol)).
