@@ -1,14 +1,12 @@
-"use client";
-
 import { Providers } from "@/components/Providers";
 import { AccountProvider } from "@/components/terminal/AccountProvider";
-import { Terminal } from "@/components/terminal/Terminal";
+import { AppShell } from "@/components/shell/AppShell";
 
-export default function AppPage() {
+export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <Providers>
       <AccountProvider>
-        <Terminal />
+        <AppShell>{children}</AppShell>
       </AccountProvider>
     </Providers>
   );

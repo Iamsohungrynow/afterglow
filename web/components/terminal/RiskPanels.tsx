@@ -1,64 +1,93 @@
 "use client";
 
+import { useState } from "react";
 import { WeekClock } from "@/components/WeekClock";
 import { GapBars } from "@/components/GapBars";
 import { MARKETS, gapModel } from "@/lib/markets";
 import { fmtPct } from "@/lib/format";
 import type { MarketView } from "@/hooks/useMarket";
 
-export function ClockPanel({ m, now }: { m?: MarketView; now?: number }) {
-  const risk = m?.risk ?? MARKETS.NVDA.risk;
-  return (
-    <section className="flex min-h-0 flex-col border-b border-line">
-      <PanelHead title="Market clock" note="Borrow limit across the trading week, UTC" />
-      <div className="px-3 pb-2 pt-3">
-        <WeekClock now={now} risk={risk} weekendLtvBps={m?.weekendLtvBps} />
-      </div>
-      <div className="grid grid-cols-2 gap-px border-t border-line bg-line md:grid-cols-4">
-        <Cell label="Weekday limit" value={fmtPct(risk.baseLtvBps, 0)} />
-        <Cell label="Weekend limit" value={fmtPct(m?.weekendLtvBps ?? risk.weekendLtvBps, 1)} accent />
-        <Cell label="Liquidation" value={fmtPct(risk.liqLtvBps, 0)} />
-        <Cell label="Liquidation bonus" value={fmtPct(risk.liqBonusBps, 0)} />
-      </div>
-    </section>
-  );
-}
+type View = "Week" | "Gaps";
 
-export function GapPanel({ symbol, m }: { symbol: string; m?: MarketView }) {
-  const info = MARKETS[symbol];
-  if (!info) return null;
-  const liq = m?.risk.liqLtvBps ?? info.risk.liqLtvBps;
-  const model = gapModel(info.gaps, liq);
+/**
+ * Center panel, laid out like a chart: a toolbar that switches between the trading-week clock and
+ * GapGuard's weekend-gap history, then GapGuard's model stats as a compact strip.
+ */
+export function MarketChartPanel({ symbol, m, now }: { symbol: string; m?: MarketView; now?: number }) {
+  const [view, setView] = useState<View>("Week");
+  const info = MARKETS[symbol] ?? MARKETS.TSLA;
+  const risk = m?.risk ?? info.risk;
+  const model = gapModel(info.gaps, risk.liqLtvBps);
   const configured = m?.risk.weekendLtvBps ?? info.risk.weekendLtvBps;
   const binding = model.weekendLtv < configured;
+
   return (
-    <section className="flex flex-col">
-      <PanelHead title="GapGuard" note={`${symbol} weekend gaps, Chainlink history`} />
-      <div className="px-4 pt-4">
-        <GapBars gaps={info.gaps} height={92} />
+    <section className="flex shrink-0 flex-col border-b border-line">
+      <div className="flex h-9 items-center justify-between border-b border-line px-3">
+        <div className="flex items-center gap-3">
+          <span className="text-[12.5px] text-fg">Market clock</span>
+          <span className="h-3.5 w-px bg-line-strong" />
+          <div className="flex items-center gap-0.5">
+            {(["Week", "Gaps"] as View[]).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                aria-pressed={view === v}
+                className={`h-6 rounded-[8px] px-2 text-[12px] transition-colors ${
+                  view === v ? "bg-white/[0.07] text-fg" : "text-fg-3 hover:text-fg-2"
+                }`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        </div>
+        <span className="text-[11px] text-fg-3">{view === "Gaps" ? `${symbol} weekend gaps, Chainlink, UTC` : "UTC"}</span>
       </div>
-      <div className="mt-auto grid grid-cols-2 gap-px border-t border-line bg-line md:grid-cols-4">
+
+      {view === "Week" ? (
+        <div>
+          <div className="px-3 pb-1 pt-3">
+            <WeekClock now={now} risk={risk} weekendLtvBps={m?.weekendLtvBps} />
+          </div>
+          <div className="flex flex-wrap gap-x-6 gap-y-1 px-4 pb-3 text-[11.5px]">
+            <Legend k="Weekday limit" v={fmtPct(risk.baseLtvBps, 0)} />
+            <Legend k="Weekend limit" v={fmtPct(m?.weekendLtvBps ?? risk.weekendLtvBps, 1)} accent />
+            <Legend k="Liquidation" v={fmtPct(risk.liqLtvBps, 0)} />
+            <Legend k="Liquidation bonus" v={fmtPct(risk.liqBonusBps, 0)} />
+          </div>
+        </div>
+      ) : (
+        <div className="px-4 pb-3 pt-4">
+          <GapBars gaps={info.gaps} height={220} />
+          <div className="mt-2 flex justify-between text-[11px] text-fg-3">
+            <span>{info.gaps.length} weekends ago</span>
+            <span>Last weekend</span>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-px border-t border-line bg-line md:grid-cols-4">
         <Cell label="Gap volatility (σ)" value={fmtPct(model.sigma, 2)} />
         <Cell label="3σ buffer" value={fmtPct(model.buffer, 1)} />
         <Cell label="Model weekend limit" value={fmtPct(model.weekendLtv, 1)} accent={binding} />
-        <Cell label="Binding" value={binding ? "Model" : "Configured"} />
+        <Cell label="Binding" value={binding ? "GapGuard model" : "Configured"} />
       </div>
     </section>
   );
 }
 
-function PanelHead({ title, note }: { title: string; note: string }) {
+function Legend({ k, v, accent }: { k: string; v: string; accent?: boolean }) {
   return (
-    <div className="flex h-10 items-center justify-between border-b border-line px-4">
-      <span className="text-[12.5px] text-fg">{title}</span>
-      <span className="text-[11px] text-fg-3">{note}</span>
-    </div>
+    <span className="whitespace-nowrap">
+      <span className="text-fg-3">{k}</span> <span className={`num ${accent ? "text-glow" : "text-fg-2"}`}>{v}</span>
+    </span>
   );
 }
 
 function Cell({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="bg-ink px-4 py-3">
+    <div className="bg-ink px-4 py-2.5">
       <div className="text-[11px] text-fg-3">{label}</div>
       <div className={`num mt-1 text-[13px] ${accent ? "text-glow" : "text-fg"}`}>{value}</div>
     </div>

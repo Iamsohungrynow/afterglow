@@ -1,13 +1,14 @@
 "use client";
 
+import { ConnectWalletButton } from "@/components/shell/WalletControls";
 import { useMemo, useState } from "react";
 import { useAccount, useConnect } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { encodeFunctionData, maxUint256, parseUnits } from "viem";
-import { ArrowSquareOut, Lightning } from "@phosphor-icons/react";
+import { ArrowSquareOut, CheckSquare, Lightning, Square } from "@phosphor-icons/react";
 import { erc20Abi, marketAbi, tranchesAbi } from "@/lib/abi";
 import { explorerTx } from "@/lib/chains";
-import { fmt, fmtPct } from "@/lib/format";
+import { daysLeft, fmt, fmtPct } from "@/lib/format";
 import { fmtDuration, nextTransition } from "@/lib/session";
 import { boostAprPct, type MarketView } from "@/hooks/useMarket";
 import type { PositionView } from "@/hooks/usePosition";
@@ -15,28 +16,47 @@ import { useAfterglowAccount, type Call } from "./AccountProvider";
 
 type Tab = "Borrow" | "Repay" | "Lend";
 
+/** Order panel: rate and term chips, Borrow / Repay / Lend, then the form for the chosen tab. */
 export function ActionPanel({ m, pos, now }: { m?: MarketView; pos?: PositionView; now?: number }) {
   const [tab, setTab] = useState<Tab>("Borrow");
+  const term = m && now ? Math.round(daysLeft(m.maturity, now)) : undefined;
   return (
-    <aside className="flex min-h-0 flex-col">
-      <div className="grid grid-cols-3 border-b border-line">
+    <aside className="flex flex-col gap-3 p-3">
+      <div className="grid grid-cols-2 gap-2">
+        <InfoChip label="Fixed" value={m ? `${m.aprPct.toFixed(2)}%` : undefined} />
+        <InfoChip label="Term" value={term !== undefined ? `${term}d` : undefined} />
+      </div>
+
+      <div className="grid grid-cols-3 gap-1 rounded-[8px] border border-line bg-ink-2 p-1">
         {(["Borrow", "Repay", "Lend"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`relative h-11 text-[13px] transition-colors ${tab === t ? "text-fg" : "text-fg-3 hover:text-fg-2"}`}
+            aria-pressed={tab === t}
+            className={`h-8 rounded-[6px] text-[13px] transition-colors ${
+              tab === t ? "bg-white/[0.08] text-fg shadow-[inset_0_1px_0_rgb(255_255_255/0.04)]" : "text-fg-3 hover:text-fg-2"
+            }`}
           >
             {t}
-            {tab === t && <span className="absolute inset-x-6 bottom-0 h-px bg-glow" />}
           </button>
         ))}
       </div>
-      <div className="flex flex-1 flex-col overflow-y-auto p-4">
+
+      <div className="flex flex-col pt-1">
         {tab === "Borrow" && <BorrowForm m={m} pos={pos} now={now} />}
         {tab === "Repay" && <RepayForm m={m} pos={pos} />}
         {tab === "Lend" && <LendForm m={m} pos={pos} />}
       </div>
     </aside>
+  );
+}
+
+function InfoChip({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-line-strong bg-white/[0.03] text-[12px]">
+      <span className="text-fg-3">{label}</span>
+      {value ? <span className="num text-fg">{value}</span> : <span className="inline-block h-3 w-10 animate-pulse bg-white/[0.06]" />}
+    </div>
   );
 }
 
@@ -84,8 +104,16 @@ function BorrowForm({ m, pos, now }: { m?: MarketView; pos?: PositionView; now?:
   else if (addColl <= 0 && add <= 0) blocked = "Enter an amount";
   else if (pos && addColl > pos.wallet.token) blocked = `Not enough ${m?.symbol}`;
 
+  // Slider: target loan-to-value on the (existing + added) collateral, capped at today's limit.
+  const setLtv = (bps: number) => {
+    if (!m || !calc || calc.value <= 0) return;
+    const target = (calc.value * bps) / 10_000 - (pos?.debtNow ?? 0);
+    const v = Math.floor(Math.max(0, target) * 100) / 100;
+    setAmount(v > 0 ? v.toFixed(2) : "");
+  };
+
   return (
-    <div className="flex flex-1 flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <Field
         label={`Add collateral (${m?.symbol ?? ""})`}
         value={coll}
@@ -93,22 +121,21 @@ function BorrowForm({ m, pos, now }: { m?: MarketView; pos?: PositionView; now?:
         hint={pos ? `Wallet ${fmt(pos.wallet.token, 4)}` : undefined}
         onMax={pos ? () => setColl(String(pos.wallet.token)) : undefined}
       />
-      <Field
-        label="Borrow (USDG)"
-        value={amount}
-        onChange={setAmount}
-        hint={calc ? `Up to ${fmt(calc.maxBorrow)}` : undefined}
-        onMax={calc ? () => setAmount(calc.maxBorrow.toFixed(2)) : undefined}
-      />
+      <div className="grid gap-3">
+        <Field
+          label="Borrow (USDG)"
+          value={amount}
+          onChange={setAmount}
+          hint={calc ? `Up to ${fmt(calc.maxBorrow)}` : undefined}
+          onMax={calc ? () => setAmount(calc.maxBorrow.toFixed(2)) : undefined}
+        />
+        {m && calc && <LtvSlider m={m} ltv={calc.ltv} disabled={calc.value <= 0 || m.maxLtvBps <= 0} onChange={setLtv} />}
+      </div>
 
-      {m && calc && <LtvGauge m={m} ltv={calc.ltv} />}
-
-      <dl className="grid gap-2 border-t border-line pt-4 text-[12.5px]">
-        <Row k="Collateral value" v={calc ? `${fmt(calc.value)} USDG` : "-"} />
-        <Row k="Owed at maturity" v={calc ? `${fmt(calc.owed)} USDG` : "-"} strong />
-        <Row k="Fixed APR" v={m ? `${m.aprPct.toFixed(2)}%` : "-"} />
-        <Row k="Liquidation price" v={calc?.liqPrice ? `${fmt(calc.liqPrice)} USDG` : "-"} />
-      </dl>
+      <div className="grid gap-2">
+        <CheckRow on={!overWeekend} label={overWeekend ? "Above the weekend limit" : "Within the weekend limit"} value={m ? fmtPct(m.weekendLtvBps) : undefined} />
+        <CheckRow on label="Fixed rate, locked to maturity" value={m ? `${m.aprPct.toFixed(2)}%` : undefined} />
+      </div>
 
       {overWeekend && (
         <p className="border-l border-glow/60 pl-3 text-[12px] leading-relaxed text-fg-2">
@@ -118,6 +145,14 @@ function BorrowForm({ m, pos, now }: { m?: MarketView; pos?: PositionView; now?:
       )}
 
       <Submit m={m} blocked={blocked} label={addColl > 0 && add > 0 ? "Deposit and borrow" : addColl > 0 ? "Deposit collateral" : "Borrow"} build={calls} onDone={() => (setColl(""), setAmount(""))} />
+
+      <Summary>
+        <Row k="Collateral value" v={calc ? `${fmt(calc.value)} USDG` : "-"} />
+        <Row k="Owed at maturity" v={calc ? `${fmt(calc.owed)} USDG` : "-"} strong />
+        <Row k="Liquidation price" v={calc?.liqPrice ? `${fmt(calc.liqPrice)} USDG` : "-"} />
+        <Row k="Weekend LTV" v={m ? fmtPct(m.weekendLtvBps) : "-"} />
+      </Summary>
+
       {m && <SessionNote m={m} now={now} />}
     </div>
   );
@@ -133,7 +168,7 @@ function SessionNote({ m, now }: { m: MarketView; now?: number }) {
     Halted: "Pricing is paused (corporate action, sequencer or USDG peg). Only repaying and adding collateral are available.",
   };
   return (
-    <div className="mt-2 border-t border-line pt-4">
+    <div className="border-t border-line pt-3">
       <div className="flex items-center justify-between text-[11px] text-fg-3">
         <span>This weekend</span>
         {next && <span className="num">{next.to} in {fmtDuration(next.in)}</span>}
@@ -172,18 +207,23 @@ function RepayForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
   else if (pos && w > pos.collateral) blocked = "More than your collateral";
 
   return (
-    <div className="flex flex-1 flex-col gap-4">
-      <dl className="grid gap-2 text-[12.5px]">
+    <div className="flex flex-col gap-4">
+      <Field label="Repay (USDG)" value={amount} onChange={setAmount} hint={pos ? `Wallet ${fmt(pos.wallet.usdg)}` : undefined} onMax={pos ? () => setAmount(pos.debtNow.toFixed(6)) : undefined} />
+      <Field label={`Withdraw collateral (${m?.symbol ?? ""})`} value={withdraw} onChange={setWithdraw} onMax={pos ? () => setWithdraw(String(pos.collateral)) : undefined} />
+
+      <div className="grid gap-2">
+        <CheckRow on label="Repay any time, also on weekends" />
+        <CheckRow on={full} label={full ? "Closes the loan in full" : "Partial repayment at today's value"} />
+      </div>
+
+      <Submit m={m} blocked={blocked} label={pay > 0 && w > 0 ? "Repay and withdraw" : pay > 0 ? "Repay" : "Withdraw"} build={calls} onDone={() => (setAmount(""), setWithdraw(""))} />
+
+      <Summary>
         <Row k="Debt today" v={pos ? `${fmt(pos.debtNow)} USDG` : "-"} strong />
         <Row k="Owed at maturity" v={pos ? `${fmt(pos.face)} USDG` : "-"} />
         <Row k="Collateral" v={pos ? `${fmt(pos.collateral, 4)} ${m?.symbol ?? ""}` : "-"} />
-      </dl>
-      <Field label="Repay (USDG)" value={amount} onChange={setAmount} hint={pos ? `Wallet ${fmt(pos.wallet.usdg)}` : undefined} onMax={pos ? () => setAmount(pos.debtNow.toFixed(6)) : undefined} />
-      <p className="text-[12px] text-fg-3">Repaying early costs today&apos;s discounted value. Repay is never paused, even on weekends.</p>
-      <Field label={`Withdraw collateral (${m?.symbol ?? ""})`} value={withdraw} onChange={setWithdraw} onMax={pos ? () => setWithdraw(String(pos.collateral)) : undefined} />
-      <div className="mt-auto">
-        <Submit m={m} blocked={blocked} label={pay > 0 && w > 0 ? "Repay and withdraw" : pay > 0 ? "Repay" : "Withdraw"} build={calls} onDone={() => (setAmount(""), setWithdraw(""))} />
-      </div>
+      </Summary>
+      <p className="text-[12px] leading-relaxed text-fg-3">Repaying early costs today&apos;s discounted value. Repay is never paused, even on weekends.</p>
     </div>
   );
 }
@@ -216,14 +256,19 @@ function LendForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
   else if (m?.mode === "live" && !t?.address) blocked = "No tranches on this market";
 
   return (
-    <div className="flex flex-1 flex-col gap-4">
-      <div className="grid grid-cols-2 gap-px border border-line bg-line">
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-2">
         {(["Protected", "Boost"] as const).map((x) => {
           const on = tranche === x;
           const apr = x === "Protected" ? t?.seniorAprPct : boost;
           return (
-            <button key={x} onClick={() => setTranche(x)} className={`bg-ink px-3 py-3 text-left transition ${on ? "bg-ink-3" : "hover:bg-ink-2"}`}>
-              <div className={`text-[13px] ${on ? "text-fg" : "text-fg-2"}`}>{x}</div>
+            <button
+              key={x}
+              onClick={() => setTranche(x)}
+              aria-pressed={on}
+              className={`rounded-[8px] border px-3 py-2.5 text-left transition-colors ${on ? "border-glow/40 bg-glow/[0.06]" : "border-line hover:border-line-strong"}`}
+            >
+              <div className={`text-[12.5px] ${on ? "text-fg" : "text-fg-2"}`}>{x}</div>
               <div className={`num mt-1 text-[16px] ${on ? (x === "Boost" ? "text-glow" : "text-fg") : "text-fg-3"}`}>
                 {apr !== undefined ? `${apr.toFixed(2)}%` : x === "Boost" ? "residual" : "-"}
               </div>
@@ -233,9 +278,9 @@ function LendForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
         })}
       </div>
 
-      <div className="grid grid-cols-2 gap-1 rounded-[6px] border border-line p-1">
+      <div className="grid grid-cols-2 gap-1 rounded-[8px] border border-line bg-ink-2 p-1">
         {(["Deposit", "Withdraw"] as const).map((x) => (
-          <button key={x} onClick={() => setMode(x)} className={`h-8 rounded-[4px] text-[12.5px] ${mode === x ? "bg-white/[0.07] text-fg" : "text-fg-3"}`}>
+          <button key={x} onClick={() => setMode(x)} aria-pressed={mode === x} className={`h-7 rounded-[6px] text-[12.5px] transition-colors ${mode === x ? "bg-white/[0.08] text-fg" : "text-fg-3 hover:text-fg-2"}`}>
             {x}
           </button>
         ))}
@@ -248,9 +293,9 @@ function LendForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
         onMax={pos ? () => setAmount(String(mode === "Deposit" ? pos.wallet.usdg : (held ?? 0))) : undefined}
       />
 
-      <YieldSource m={m} />
-
       <Submit m={m} blocked={blocked} label={`${mode} ${tranche}`} build={calls} onDone={() => setAmount("")} />
+
+      <YieldSource m={m} />
     </div>
   );
 }
@@ -260,7 +305,7 @@ function YieldSource({ m }: { m?: MarketView }) {
   const t = m?.tranches;
   const cover = t?.coverBps;
   return (
-    <div className="border-t border-line pt-4">
+    <div className="border-t border-line pt-3">
       <div className="text-[11px] text-fg-3">Where the yield comes from</div>
       <ol className="mt-2.5 grid gap-2 text-[12px] leading-relaxed text-fg-2">
         <li>
@@ -285,54 +330,88 @@ function YieldSource({ m }: { m?: MarketView }) {
 
 // ---------------------------------------------------------------------------
 
-function LtvGauge({ m, ltv }: { m: MarketView; ltv: number }) {
-  const scale = (bps: number) => `${Math.min(100, (bps / 8500) * 100)}%`;
-  const color = ltv > m.risk.liqLtvBps ? "bg-halt" : ltv > m.maxLtvBps ? "bg-glow" : "bg-fg";
+/** Loan-to-value slider from 0 to today's borrow limit; moving it sets the borrow amount. */
+function LtvSlider({ m, ltv, disabled, onChange }: { m: MarketView; ltv: number; disabled: boolean; onChange: (bps: number) => void }) {
+  const max = Math.max(0, m.maxLtvBps);
+  const shown = Number.isFinite(ltv) ? Math.min(Math.max(ltv, 0), max) : max;
+  const pct = max > 0 ? (shown / max) * 100 : 0;
+  const weekendAt = max > 0 ? Math.min(100, (m.weekendLtvBps / max) * 100) : 0;
+  const over = ltv > max;
+  const track = disabled ? "rgb(255 255 255 / 0.06)" : `linear-gradient(to right, var(--color-glow) 0 ${pct}%, rgb(255 255 255 / 0.08) ${pct}% 100%)`;
+
   return (
     <div>
       <div className="flex items-baseline justify-between text-[12px]">
         <span className="text-fg-3">Loan to value</span>
-        <span className="num text-fg">
-          {Number.isFinite(ltv) ? fmtPct(ltv) : "-"} <span className="text-fg-3">/ {fmtPct(m.maxLtvBps)} now</span>
+        <span className="num">
+          <span className={over ? "text-halt" : "text-fg"}>{Number.isFinite(ltv) ? fmtPct(ltv) : "-"}</span>
+          <span className="text-fg-3"> / {fmtPct(max)} now</span>
         </span>
       </div>
-      <div className="relative mt-2.5 h-1.5">
-        <div className="absolute inset-y-0 left-0 bg-white/[0.06]" style={{ width: scale(m.risk.liqLtvBps) }} />
-        <div className={`absolute inset-y-0 left-0 transition-[width] duration-300 ${color}`} style={{ width: scale(Number.isFinite(ltv) ? ltv : 0) }} />
-        {[
-          { v: m.weekendLtvBps, c: "bg-glow" },
-          { v: m.maxLtvBps, c: "bg-fg-2" },
-          { v: m.risk.liqLtvBps, c: "bg-halt" },
-        ].map((t, i) => (
-          <span key={i} className={`absolute -top-1 h-3.5 w-px ${t.c}`} style={{ left: scale(t.v) }} />
-        ))}
+      <div className="relative mt-2.5">
+        <input
+          type="range"
+          min={0}
+          max={max}
+          step={Math.max(1, Math.round(max / 200))}
+          value={shown}
+          disabled={disabled}
+          aria-label="Loan to value"
+          onChange={(e) => onChange(Number(e.target.value))}
+          style={{ background: track }}
+          className="relative z-10 block h-1 w-full cursor-pointer appearance-none rounded-full outline-none disabled:cursor-not-allowed
+            [&::-moz-range-thumb]:size-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-ink [&::-moz-range-thumb]:bg-glow
+            [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-ink [&::-webkit-slider-thumb]:bg-glow [&::-webkit-slider-thumb]:shadow-[0_0_0_4px_rgb(233_161_94/0.18)]
+            focus-visible:[&::-webkit-slider-thumb]:shadow-[0_0_0_5px_rgb(233_161_94/0.3)]
+            disabled:[&::-webkit-slider-thumb]:bg-fg-3 disabled:[&::-moz-range-thumb]:bg-fg-3"
+        />
+        {max > 0 && weekendAt < 100 && (
+          <span className="pointer-events-none absolute -top-1 z-20 h-3 w-px bg-fg-2/70" style={{ left: `${weekendAt}%` }} />
+        )}
       </div>
-      <div className="mt-2 flex gap-4 text-[11px] text-fg-3">
-        <span><span className="mr-1 inline-block h-2 w-px bg-glow align-middle" />weekend</span>
-        <span><span className="mr-1 inline-block h-2 w-px bg-fg-2 align-middle" />limit now</span>
-        <span><span className="mr-1 inline-block h-2 w-px bg-halt align-middle" />liquidation</span>
+      <div className="relative mt-2 h-3 text-[10.5px] text-fg-3">
+        <span className="num absolute left-0">0%</span>
+        {max > 0 && weekendAt < 88 && weekendAt > 12 && (
+          <span className="num absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${weekendAt}%` }}>
+            weekend {fmtPct(m.weekendLtvBps, 0)}
+          </span>
+        )}
+        <span className="num absolute right-0">{max > 0 ? fmtPct(max, 0) : "paused"}</span>
       </div>
+    </div>
+  );
+}
+
+function CheckRow({ on, label, value }: { on: boolean; label: string; value?: string }) {
+  const Icon = on ? CheckSquare : Square;
+  return (
+    <div className="flex items-center justify-between text-[12px]">
+      <span className="flex items-center gap-2">
+        <Icon size={15} weight={on ? "fill" : "regular"} className={on ? "text-glow" : "text-fg-3"} />
+        <span className={on ? "text-fg-2" : "text-fg"}>{label}</span>
+      </span>
+      {value && <span className="num text-fg-3">{value}</span>}
     </div>
   );
 }
 
 function Field({ label, value, onChange, hint, onMax }: { label: string; value: string; onChange: (v: string) => void; hint?: string; onMax?: () => void }) {
   return (
-    <label className="grid gap-2">
-      <span className="flex justify-between text-[12px]">
+    <label className="grid gap-1.5">
+      <span className="flex justify-between gap-2 text-[12px]">
         <span className="text-fg-2">{label}</span>
-        {hint && <span className="num text-fg-3">{hint}</span>}
+        {hint && <span className="num truncate text-fg-3">{hint}</span>}
       </span>
-      <span className="flex h-11 items-center rounded-[6px] border border-line-strong bg-ink-2 px-3 focus-within:border-fg-3">
+      <span className="flex h-10 items-center rounded-[8px] border border-line-strong bg-ink-2 px-3 transition-colors focus-within:border-fg-3 hover:border-white/20">
         <input
           inputMode="decimal"
           placeholder="0.00"
           value={value}
           onChange={(e) => /^\d*\.?\d*$/.test(e.target.value) && onChange(e.target.value)}
-          className="num w-full bg-transparent text-[15px] text-fg outline-none placeholder:text-fg-3"
+          className="num w-full bg-transparent text-[14px] text-fg outline-none placeholder:text-fg-3"
         />
         {onMax && (
-          <button type="button" onClick={onMax} className="ml-2 text-[11px] font-medium text-glow hover:text-fg">
+          <button type="button" onClick={onMax} className="ml-2 rounded-[6px] px-1.5 py-0.5 text-[11px] font-medium text-glow transition-colors hover:bg-glow/10">
             MAX
           </button>
         )}
@@ -341,11 +420,15 @@ function Field({ label, value, onChange, hint, onMax }: { label: string; value: 
   );
 }
 
+function Summary({ children }: { children: React.ReactNode }) {
+  return <dl className="grid gap-2 border-t border-line pt-3 text-[12px]">{children}</dl>;
+}
+
 function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
   return (
-    <div className="flex justify-between">
+    <div className="flex justify-between gap-3">
       <dt className="text-fg-3">{k}</dt>
-      <dd className={`num ${strong ? "text-fg" : "text-fg-2"}`}>{v}</dd>
+      <dd className={`num text-right ${strong ? "text-fg" : "text-fg-2"}`}>{v}</dd>
     </div>
   );
 }
@@ -360,24 +443,25 @@ function Submit({ m, blocked, label, build, onDone }: { m?: MarketView; blocked?
   const gasRow = acct.gaslessAvailable && (
     <button
       type="button"
+      role="checkbox"
+      aria-checked={acct.gasless}
       onClick={() => acct.setGasless(!acct.gasless)}
-      className="mb-3 flex w-full items-center justify-between rounded-[6px] border border-line px-3 py-2 text-left"
+      className="mb-3 flex w-full items-center justify-between text-left text-[12px]"
     >
-      <span className="flex items-center gap-2 text-[12px]">
-        <Lightning size={13} weight="fill" className={acct.gasless ? "text-glow" : "text-fg-3"} />
-        <span className={acct.gasless ? "text-fg" : "text-fg-2"}>Gasless, one transaction</span>
+      <span className="flex items-center gap-2">
+        {acct.gasless ? <CheckSquare size={15} weight="fill" className="text-glow" /> : <Square size={15} className="text-fg-3" />}
+        <span className={acct.gasless ? "text-fg-2" : "text-fg"}>Gasless, one transaction</span>
       </span>
-      <span className="text-[11px] text-fg-3">{acct.gasless ? "ZeroDev on" : "off"}</span>
+      <span className="flex items-center gap-1 text-[11px] text-fg-3">
+        <Lightning size={11} weight="fill" className={acct.gasless ? "text-glow" : "text-fg-3"} />
+        {acct.gasless ? "ZeroDev on" : "off"}
+      </span>
     </button>
   );
 
-  const btn = "h-11 w-full rounded-[6px] text-[14px] font-medium transition active:translate-y-px";
+  const btn = "h-11 w-full whitespace-nowrap rounded-[8px] px-3 text-[14px] font-medium transition active:translate-y-px";
   if (!isConnected) {
-    return (
-      <button className={`${btn} bg-fg text-ink hover:bg-white`} onClick={() => connectors[0] && connect({ connector: connectors[0] })}>
-        Connect wallet
-      </button>
-    );
+    return <ConnectWalletButton variant="block" />;
   }
   if (m?.mode === "preview") {
     return (
@@ -408,7 +492,11 @@ function Submit({ m, blocked, label, build, onDone }: { m?: MarketView; blocked?
   return (
     <div>
       {gasRow}
-      <button disabled={disabled} onClick={run} className={`${btn} ${disabled ? "cursor-not-allowed bg-white/[0.06] text-fg-3" : "bg-glow text-ink hover:bg-[#f0b173]"}`}>
+      <button
+        disabled={disabled}
+        onClick={run}
+        className={`${btn} ${disabled ? "cursor-not-allowed bg-white/[0.06] text-fg-3" : "bg-glow text-ink shadow-[0_0_24px_-6px_rgb(233_161_94/0.55)] hover:bg-[#f0b173]"}`}
+      >
         {state.busy ? "Confirm in wallet" : acct.gasless && !acct.owner ? (acct.preparing ? "Preparing smart account" : "Smart account unavailable") : blocked ?? label}
       </button>
       {state.hash && (

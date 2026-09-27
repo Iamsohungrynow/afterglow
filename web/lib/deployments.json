@@ -1,7 +1,7 @@
 {
   "46630": {
     "chainId": 46630,
-    "gapGuard": "0x0000000000000000000000000000000000000000",
+    "gapGuard": "0x5D3D90d16bA7Ef507859Bb7554e6A272781b49bB",
     "markets": {
       "AMZN": {
         "boostToken": "0xc672E7bA0C845F05e500F8Df6D4e1115358CB6E4",
