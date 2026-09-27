@@ -15,11 +15,13 @@ import { useNow } from "@/hooks/useNow";
 import { DEFAULT_SCHEDULE, WEEK, intoWeek, maxBorrowLtv, scheduleSession, weekStart, type Session } from "@/lib/session";
 import { MARKETS } from "@/lib/markets";
 import { SessionChip } from "@/components/SessionChip";
-import { WeekClock } from "@/components/WeekClock";
+import { WEEK_CLOCK_INSETS, WeekClock } from "@/components/WeekClock";
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const MAX = WEEK - 60;
-const risk = MARKETS.NVDA.risk;
+// Worked example: the TSLA market, live on Robinhood Chain testnet.
+const SYMBOL = "TSLA";
+const risk = MARKETS[SYMBOL].risk;
 const S = DEFAULT_SCHEDULE;
 // The schedule is set for US daylight time: New York is UTC minus 4 hours.
 const NY_OFFSET = 4 * 3600;
@@ -53,9 +55,10 @@ export function WeekSimulator() {
   const now = useNow();
   const [offset, setOffset] = useState<number>();
   const [playing, setPlaying] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const areaRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+  // Set by Pause; Play resumes the sweep only if the time has not been moved by hand since.
+  const canResume = useRef(false);
 
   // Start at the real current time, once the clock is known.
   const nowOffset = now !== undefined ? intoWeek(now) : undefined;
@@ -102,12 +105,32 @@ export function WeekSimulator() {
     return () => cancelAnimationFrame(raf);
   }, [playing]);
 
+  // Any manual move (drag, keys, presets) ends the sweep, and the next Play starts from Monday.
+  const moveTo = (v: number) => {
+    setPlaying(false);
+    canResume.current = false;
+    setOffset(v);
+  };
+
+  const togglePlay = () => {
+    if (playing) {
+      canResume.current = true;
+      setPlaying(false);
+      return;
+    }
+    // Always sweep the whole week from Monday 00:00 UTC, unless resuming a sweep that was paused.
+    if (!canResume.current || oRef.current >= MAX - 600) setOffset(0);
+    canResume.current = false;
+    setPlaying(true);
+  };
+
+  // The track is inset like the chart's plot area, so the thumb sits exactly over the chart's time.
   const setFromPointer = (clientX: number) => {
-    const el = areaRef.current;
+    const el = trackRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
     const f = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
-    setOffset(Math.round((f * MAX) / 300) * 300);
+    moveTo(Math.min(MAX, Math.round((f * WEEK) / 300) * 300));
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -125,16 +148,11 @@ export function WeekSimulator() {
     const k = map[e.key];
     if (k === undefined) return;
     e.preventDefault();
-    setPlaying(false);
-    setOffset((p) => {
-      const v = p ?? 0;
-      if (k === "home") return 0;
-      if (k === "end") return MAX;
-      return Math.min(MAX, Math.max(0, v + k));
-    });
+    const v = oRef.current;
+    moveTo(k === "home" ? 0 : k === "end" ? MAX : Math.min(MAX, Math.max(0, v + k)));
   };
 
-  const frac = o / MAX;
+  const frac = o / WEEK;
   const valueText = `${utc.day} ${utc.hm} UTC, ${session}, ${limit ? `borrow limit ${(limit / 100).toFixed(2)}%` : "new borrowing paused"}`;
 
   return (
@@ -154,7 +172,7 @@ export function WeekSimulator() {
           <p className="mt-4 max-w-[52ch] text-[14.5px] leading-relaxed text-fg-2">{PHASE[session]}</p>
         </div>
         <div className="bg-ink-2 p-6 md:col-span-5 md:p-8">
-          <div className="text-[12px] text-fg-3">NVDA borrow limit at this moment</div>
+          <div className="text-[12px] text-fg-3">{SYMBOL} borrow limit at this moment</div>
           <div className="num mt-3 h-[52px] text-[52px] leading-none text-fg">
             {limit ? (
               <>
@@ -194,36 +212,33 @@ export function WeekSimulator() {
       {/* Scrubber */}
       <div className="border-t border-line px-3 pt-6 md:px-5">
         <input
-          ref={inputRef}
           type="range"
           min={0}
           max={MAX}
           step={900}
           value={Math.round(o)}
-          onChange={(e) => setOffset(Number(e.target.value))}
+          onChange={(e) => moveTo(Number(e.target.value))}
           onKeyDown={onKeyDown}
           aria-label="Time in the trading week"
           aria-valuetext={valueText}
           className="peer sr-only"
         />
+        {/* Pointer drags never focus the hidden input, so the outline only shows for keyboard focus. */}
         <div
-          ref={areaRef}
           className="relative cursor-ew-resize select-none rounded-[8px] outline-offset-2 peer-focus-visible:outline-2 peer-focus-visible:outline-glow"
           style={{ touchAction: "pan-y" }}
           onMouseDown={(e) => e.preventDefault()}
           onPointerDown={(e) => {
             dragging.current = true;
-            setPlaying(false);
             e.currentTarget.setPointerCapture(e.pointerId);
             setFromPointer(e.clientX);
-            inputRef.current?.focus({ preventScroll: true });
           }}
           onPointerMove={(e) => dragging.current && setFromPointer(e.clientX)}
           onPointerUp={() => (dragging.current = false)}
           onPointerCancel={() => (dragging.current = false)}
         >
           {/* Track and thumb */}
-          <div className="relative h-10">
+          <div ref={trackRef} className="relative h-10" style={{ marginLeft: WEEK_CLOCK_INSETS.left, marginRight: WEEK_CLOCK_INSETS.right }}>
             <div className="absolute inset-x-0 top-[30px] h-px bg-line-strong" />
             <div className="absolute left-0 top-[30px] h-px bg-glow/70" style={{ width: `${frac * 100}%` }} />
             <div className="absolute top-0" style={{ left: `${frac * 100}%` }}>
@@ -237,7 +252,7 @@ export function WeekSimulator() {
             </div>
           </div>
           <div aria-hidden>
-            <WeekClock now={t} risk={risk} hover={false} />
+            <WeekClock now={t} risk={risk} hover={false} nowLabel={false} />
           </div>
         </div>
       </div>
@@ -247,10 +262,7 @@ export function WeekSimulator() {
         {!reduce && (
           <button
             type="button"
-            onClick={() => {
-              if (!playing && o >= MAX - 600) setOffset(0);
-              setPlaying((p) => !p);
-            }}
+            onClick={togglePlay}
             className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-[6px] bg-fg px-3 text-[12.5px] font-medium text-ink transition hover:bg-white active:translate-y-px"
           >
             {playing ? <Pause size={13} weight="fill" /> : <Play size={13} weight="fill" />}
@@ -260,8 +272,7 @@ export function WeekSimulator() {
         <button
           type="button"
           onClick={() => {
-            setPlaying(false);
-            if (nowOffset !== undefined) setOffset(nowOffset);
+            if (nowOffset !== undefined) moveTo(nowOffset);
           }}
           className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-[6px] border border-line-strong px-3 text-[12.5px] text-fg transition hover:border-fg-3 active:translate-y-px"
         >
@@ -272,10 +283,7 @@ export function WeekSimulator() {
           <button
             key={p.label}
             type="button"
-            onClick={() => {
-              setPlaying(false);
-              setOffset(p.at);
-            }}
+            onClick={() => moveTo(p.at)}
             className="inline-flex h-8 items-center whitespace-nowrap rounded-[6px] border border-line px-3 text-[12.5px] text-fg-2 transition hover:border-line-strong hover:text-fg active:translate-y-px"
           >
             {p.label}

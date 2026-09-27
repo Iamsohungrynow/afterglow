@@ -60,7 +60,7 @@ export function Hero() {
             <em className="font-display italic text-glow">even while Wall Street sleeps.</em>
           </h1>
           <p className="mt-6 max-w-[50ch] text-[16px] leading-relaxed text-fg-2 md:text-[17px]">
-            Lend USDG against tokenized stocks at a fixed rate. Earn through the weekend.
+            Lend USDG to stock-backed borrowers at a fixed rate. Earn through the weekend.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-3">
             <LaunchButton large />
@@ -84,13 +84,15 @@ function HorizonCaption({ now }: { now: number | undefined }) {
   if (now === undefined) return <div className="h-[22px] pt-5" />;
   const { session } = scheduleSession(now);
   const next = nextTransition(now);
-  const weekend = MARKETS.NVDA.risk.weekendLtvBps / 100;
+  const weekend = MARKETS.TSLA.risk.weekendLtvBps / 100;
   const label =
     session === "Closed"
-      ? "US equities closed. Reopens in"
+      ? "Stock feeds paused for the weekend. Reopen in"
       : session === "Closing"
         ? `Closing window. Borrow limit easing to ${weekend}%. Close in`
-        : "US equities open. Closing window starts in";
+        : session === "Halted"
+          ? "Stock feeds halted. Next session change in"
+          : "Stock feeds live (24/5). Closing window starts in";
   return (
     <div className="flex flex-col gap-2 pt-5 md:flex-row md:items-center md:justify-between">
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-fg-2" aria-live="off">
@@ -100,7 +102,7 @@ function HorizonCaption({ now }: { now: number | undefined }) {
         </span>
       </p>
       <p className="hidden text-[12px] text-fg-3 md:block">
-        The sun follows the real US market clock.
+        The sun follows the real 24/5 market clock.
       </p>
     </div>
   );

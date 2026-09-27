@@ -12,9 +12,9 @@ import { BuiltOn } from "@/components/landing/BuiltOn";
 import { LaunchButton, SourceButton, REPO } from "@/components/landing/LaunchButton";
 import { MARKETS } from "@/lib/markets";
 
-// Borrow limits for single stocks, from the NVDA market's risk params.
-const WEEKDAY_LTV = MARKETS.NVDA.risk.baseLtvBps / 100;
-const WEEKEND_LTV = MARKETS.NVDA.risk.weekendLtvBps / 100;
+// Borrow limits for single stocks, from the TSLA market's risk params.
+const WEEKDAY_LTV = MARKETS.TSLA.risk.baseLtvBps / 100;
+const WEEKEND_LTV = MARKETS.TSLA.risk.weekendLtvBps / 100;
 
 const SAFETY = [
   "Repay can never be paused",

@@ -8,6 +8,11 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONDAY = 4 * 86400; // unix 4 days = Monday 00:00 UTC
 const MONO = "var(--font-mono)";
 const AXIS = "rgb(255 255 255 / 0.28)";
+/** Mono tag text width per character at 10.5-11px. */
+const CH = 6.3;
+
+/** Horizontal plot insets in px (left axis gutter, right margin), so overlays can line up with the plot. */
+export const WEEK_CLOCK_INSETS = { left: 40, right: 10, compactLeft: 30, compactRight: 6 } as const;
 
 const pct = (bps: number) => `${(bps / 100).toFixed(bps % 100 ? 1 : 0)}%`;
 const hhmm = (sec: number) => {
@@ -28,6 +33,7 @@ export function WeekClock({
   weekendLtvBps,
   compact = false,
   hover = !compact,
+  nowLabel = true,
 }: {
   now: number | undefined;
   risk: RiskParams;
@@ -35,6 +41,8 @@ export function WeekClock({
   compact?: boolean;
   /** Crosshair with a time and limit readout under the pointer. */
   hover?: boolean;
+  /** Tag the "now" line with the time's limit. Off when the host shows its own time readout. */
+  nowLabel?: boolean;
 }) {
   // Draw at the element's real pixel width so text and strokes are never stretched.
   const ref = useRef<SVGSVGElement>(null);
@@ -54,8 +62,8 @@ export function WeekClock({
   const clipId = `wc-plot-${uid}`;
 
   const H = compact ? 160 : 240;
-  const PAD_L = compact ? 30 : 40;
-  const PAD_R = compact ? 6 : 10;
+  const PAD_L = compact ? WEEK_CLOCK_INSETS.compactLeft : WEEK_CLOCK_INSETS.left;
+  const PAD_R = compact ? WEEK_CLOCK_INSETS.compactRight : WEEK_CLOCK_INSETS.right;
   const PAD_T = compact ? 10 : 30;
   const PAD_B = 22;
   const plotW = W - PAD_L - PAD_R;
@@ -90,6 +98,24 @@ export function WeekClock({
   const tagsLeft = nowX !== undefined && nowX > PAD_L + plotW * 0.62;
   const tagX = tagsLeft ? PAD_L + 4 : W - PAD_R - 4;
   const weekdaySec = nowSec !== undefined && Math.abs(nowSec - 2.5 * 86400) < 0.9 * 86400 ? 0.9 * 86400 : 2.5 * 86400;
+
+  // "closed · no new debt" inside the weekend band: full text when it fits, "closed" on narrow charts,
+  // and moved to the wider side of the now line (or dropped) so it never runs under it.
+  const closedLabel = (() => {
+    const gap = 8;
+    const fits = (text: string, from: number, to: number) => to - from >= text.length * 6.6 + 2 * gap;
+    const pick = (from: number, to: number) =>
+      fits("closed · no new debt", from, to) ? "closed · no new debt" : fits("closed", from, to) ? "closed" : undefined;
+    const full = pick(closeX, openX);
+    if (!full) return undefined;
+    const mid = (closeX + openX) / 2;
+    const half = (full.length * 6.6) / 2 + gap;
+    if (nowX === undefined || nowX < mid - half || nowX > mid + half) return { text: full, x: mid };
+    // The now line crosses the centred label: use the wider side of the band instead.
+    const [from, to] = nowX - closeX > openX - nowX ? [closeX, nowX] : [nowX, openX];
+    const text = pick(from, to);
+    return text ? { text, x: (from + to) / 2 } : undefined;
+  })();
 
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!hover || e.pointerType === "touch") return;
@@ -172,18 +198,39 @@ export function WeekClock({
           <text x={closeX + 5} y={PAD_T + 13} fill="var(--color-halt)" fontSize="10" fontFamily={MONO}>
             close
           </text>
-          <text x={(closeX + openX) / 2} y={y(yMax * 0.3)} textAnchor="middle" fill="var(--color-fg-3)" fontSize="11" fontFamily={MONO}>
-            closed · no new debt
-          </text>
+          {closedLabel && (
+            <text x={closedLabel.x} y={y(yMax * 0.3)} textAnchor="middle" fill="var(--color-fg-3)" fontSize="11" fontFamily={MONO}>
+              {closedLabel.text}
+            </text>
+          )}
         </>
       )}
 
       {/* Now */}
-      {nowSec !== undefined && <Marker x={x(nowSec)} y={y(limitAt(nowSec))} top={PAD_T} base={base} label={compact ? undefined : `now · ${limitAt(nowSec) ? pct(limitAt(nowSec)) : "paused"}`} solid />}
+      {nowSec !== undefined && (
+        <Marker
+          x={x(nowSec)}
+          y={y(limitAt(nowSec))}
+          top={PAD_T}
+          base={base}
+          minX={PAD_L}
+          maxX={W - PAD_R}
+          label={compact || !nowLabel ? undefined : `now · ${limitAt(nowSec) ? pct(limitAt(nowSec)) : "paused"}`}
+          solid
+        />
+      )}
 
       {/* Crosshair */}
       {hoverSec !== undefined && (
-        <Marker x={x(hoverSec)} y={y(limitAt(hoverSec))} top={PAD_T} base={base} label={`${hhmm(hoverSec)} · ${limitAt(hoverSec) ? pct(limitAt(hoverSec)) : "paused"}`} />
+        <Marker
+          x={x(hoverSec)}
+          y={y(limitAt(hoverSec))}
+          top={PAD_T}
+          base={base}
+          minX={PAD_L}
+          maxX={W - PAD_R}
+          label={`${hhmm(hoverSec)} · ${limitAt(hoverSec) ? pct(limitAt(hoverSec)) : "paused"}`}
+        />
       )}
     </svg>
   );
@@ -191,7 +238,7 @@ export function WeekClock({
 
 /** A small label on the chart's ink background, like a price tag. */
 function Pill({ x, y, text, color, anchor }: { x: number; y: number; text: string; color: string; anchor: "start" | "middle" | "end" }) {
-  const w = text.length * 6.3 + 12;
+  const w = text.length * CH + 12;
   const left = anchor === "end" ? x - w : anchor === "middle" ? x - w / 2 : x;
   return (
     <g>
@@ -203,17 +250,39 @@ function Pill({ x, y, text, color, anchor }: { x: number; y: number; text: strin
   );
 }
 
-/** Vertical marker from the top of the plot to the axis, with a dot on the limit line and a tag. */
-function Marker({ x, y, top, base, label, solid = false }: { x: number; y: number; top: number; base: number; label?: string; solid?: boolean }) {
-  const w = label ? label.length * 6.3 + 14 : 0;
+/**
+ * Vertical marker from the top of the plot to the axis, with a dot on the limit line and a tag.
+ * The tag is centred on the line but clamped to [minX, maxX], so it never leaves the plot late on Sunday.
+ */
+function Marker({
+  x,
+  y,
+  top,
+  base,
+  label,
+  minX = -Infinity,
+  maxX = Infinity,
+  solid = false,
+}: {
+  x: number;
+  y: number;
+  top: number;
+  base: number;
+  label?: string;
+  minX?: number;
+  maxX?: number;
+  solid?: boolean;
+}) {
+  const w = label ? label.length * CH + 14 : 0;
+  const left = Math.max(minX, Math.min(maxX - w, x - w / 2));
   return (
     <g pointerEvents="none">
       <line x1={x} x2={x} y1={top} y2={base} stroke="var(--color-fg)" strokeOpacity={solid ? 0.85 : 0.5} strokeDasharray={solid ? undefined : "2 3"} />
       <circle cx={x} cy={y} r={solid ? 4.5 : 3.5} fill="var(--color-ink)" stroke="var(--color-fg)" strokeWidth="1.8" className={solid ? "animate-pulse-soft" : undefined} />
       {label && (
         <g>
-          <rect x={x - w / 2} y={top - 24} width={w} height={18} rx={9} fill="var(--color-fg)" />
-          <text x={x} y={top - 11.5} textAnchor="middle" fill="var(--color-ink)" fontSize="10.5" fontWeight="600" fontFamily={MONO}>
+          <rect x={left} y={top - 24} width={w} height={18} rx={9} fill="var(--color-fg)" />
+          <text x={left + w / 2} y={top - 11.5} textAnchor="middle" fill="var(--color-ink)" fontSize="10.5" fontWeight="600" fontFamily={MONO}>
             {label}
           </text>
         </g>

@@ -23,16 +23,17 @@ export function Strategies() {
     <div>
       <div className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-line bg-line sm:grid-cols-2">
         {VAULTS.map((v, i) => (
-          <Reveal key={v.name} delay={i * 0.06} className="bg-ink-2">
-            <div className="flex h-full flex-col p-6 md:p-8">
+          // Opaque cell, animated content: the grid's hairline gaps never show as grey slabs.
+          <div key={v.name} className="bg-ink-2">
+            <Reveal delay={i * 0.06} className="flex h-full flex-col p-6 md:p-8">
               <div className="flex items-center gap-2 text-[15px] text-fg">
                 <v.icon size={17} className={v.hot ? "text-glow" : "text-fg-2"} />
                 {v.name}
               </div>
               <div className={`num mt-6 text-[56px] leading-none md:text-[72px] ${v.hot ? "text-glow" : "text-fg"}`}>{v.yield}</div>
               <p className="mt-5 text-[15.5px] leading-relaxed text-fg-2">{v.line}</p>
-            </div>
-          </Reveal>
+            </Reveal>
+          </div>
         ))}
       </div>
       <p className="mt-4 text-[12.5px] leading-relaxed text-fg-3">

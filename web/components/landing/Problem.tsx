@@ -51,17 +51,18 @@ export function Problem() {
 
         <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-line bg-line lg:grid-cols-3">
           {APPROACHES.map((a, i) => (
-            <Reveal key={a.name} delay={i * 0.06} className={a.ok ? "relative bg-ink-3" : "bg-ink-2"}>
+            // Opaque cell, animated content: the grid's hairline gaps never show as grey slabs.
+            <div key={a.name} className={a.ok ? "relative bg-ink-3" : "bg-ink-2"}>
               {a.ok && <div aria-hidden className="absolute inset-x-0 top-0 h-px bg-glow" />}
-              <div className="flex h-full flex-col p-6 md:p-8">
+              <Reveal delay={i * 0.06} className="flex h-full flex-col p-6 md:p-8">
                 <h3 className={`text-[19px] font-medium tracking-[-0.01em] ${a.ok ? "text-glow" : "text-fg"}`}>{a.name}</h3>
                 <p className="mt-3 flex-1 text-[14.5px] leading-relaxed text-fg-2">{a.body}</p>
                 <p className={`mt-6 flex items-center gap-2 text-[13px] ${a.ok ? "text-fg" : "text-fg-3"}`}>
                   {a.ok ? <Check size={14} className="text-glow" /> : <X size={14} />}
                   {a.verdict}
                 </p>
-              </div>
-            </Reveal>
+              </Reveal>
+            </div>
           ))}
         </div>
 

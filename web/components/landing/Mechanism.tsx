@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { MARKETS, gapModel } from "@/lib/markets";
+import { gapModel } from "@/lib/markets";
 import type { Session } from "@/lib/session";
 import { GapBars } from "@/components/GapBars";
 import { SessionChip } from "@/components/SessionChip";
 import { Reveal } from "./Reveal";
-import { BASE, PREMIUM_BP } from "./example";
+import { BASE, EXAMPLE_MARKET, PREMIUM_BP } from "./example";
 
 // Worked example: 10,000 USDG for 28 days at the 6% base rate is 10,046.03 due (the weekend premium is kept upfront).
 const P = 10_000;
@@ -18,16 +18,23 @@ const usd = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2,
 
 export function Mechanism() {
   return (
+    // The cells' opaque backgrounds never animate, so the grid's hairline gaps never show as grey slabs.
     <div className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-line bg-line lg:grid-cols-12">
-      <Reveal className="bg-ink-2 lg:col-span-7 lg:row-span-2">
-        <FixedRate />
-      </Reveal>
-      <Reveal className="bg-ink-2 lg:col-span-5" delay={0.06}>
-        <GapGuardCell />
-      </Reveal>
-      <Reveal className="bg-ink lg:col-span-5" delay={0.12}>
-        <PhaselockCell />
-      </Reveal>
+      <div className="bg-ink-2 lg:col-span-7 lg:row-span-2">
+        <Reveal className="h-full">
+          <FixedRate />
+        </Reveal>
+      </div>
+      <div className="bg-ink-2 lg:col-span-5">
+        <Reveal className="h-full" delay={0.06}>
+          <GapGuardCell />
+        </Reveal>
+      </div>
+      <div className="bg-ink lg:col-span-5">
+        <Reveal className="h-full" delay={0.12}>
+          <PhaselockCell />
+        </Reveal>
+      </div>
     </div>
   );
 }
@@ -60,7 +67,7 @@ function FixedRate() {
         </div>
       </div>
 
-      <div className="mt-8 flex flex-1 flex-col rounded-[10px] border border-line bg-ink p-5 md:p-6">
+      <div className="mt-8 flex flex-col rounded-[10px] border border-line bg-ink p-5 md:p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <label htmlFor="repay-day" className="text-[13px] text-fg-2">
             Example: repay on day <span className="num text-fg">{day}</span> of {TERM}
@@ -71,7 +78,7 @@ function FixedRate() {
           {usd(owed(day))} <span className="text-[0.5em] text-fg-3">USDG due</span>
         </div>
 
-        <svg viewBox={`0 0 ${W} ${H}`} className="mt-5 min-h-[96px] w-full flex-1" preserveAspectRatio="none" aria-hidden>
+        <svg viewBox={`0 0 ${W} ${H}`} className="mt-5 h-[120px] w-full md:h-[200px]" preserveAspectRatio="none" aria-hidden>
           <defs>
             <linearGradient id="fr-area" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0" stopColor="var(--color-glow)" stopOpacity="0.22" />
@@ -101,7 +108,9 @@ function FixedRate() {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-px overflow-hidden rounded-[10px] border border-line bg-line sm:grid-cols-2">
+      {/* Spare height in the tall grid cell goes above this row, not into a stretched chart. */}
+      <div className="min-h-6 flex-1" />
+      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-[10px] border border-line bg-line sm:grid-cols-2">
         <div className="bg-ink-2 p-5">
           <div className="text-[12px] text-fg-3">Borrowers</div>
           <div className="mt-2 text-[14px] text-fg">Cash against your stock without selling. The rate never floats.</div>
@@ -116,7 +125,7 @@ function FixedRate() {
 }
 
 function GapGuardCell() {
-  const m = MARKETS.NVDA;
+  const m = EXAMPLE_MARKET;
   const model = gapModel(m.gaps, m.risk.liqLtvBps);
   const configured = m.risk.weekendLtvBps;
   const enforced = Math.min(configured, model.weekendLtv);
@@ -129,20 +138,26 @@ function GapGuardCell() {
       <div className="mt-7">
         <GapBars gaps={m.gaps} height={160} />
         <div className="mt-2 flex justify-between text-[12px] text-fg-3">
-          <span>NVDA, last {m.gaps.length} weekends</span>
+          <span>
+            {m.symbol}, last {m.gaps.length} weekends
+          </span>
           <span>real Chainlink prints</span>
         </div>
       </div>
       <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-[10px] border border-line bg-line sm:grid-cols-4">
-        {[
-          ["Gap volatility", `${(model.sigma / 100).toFixed(2)}%`],
-          ["Model limit", `${(model.weekendLtv / 100).toFixed(2)}%`],
-          ["Enforced", `${(enforced / 100).toFixed(0)}%`],
-          ["Premium", `${PREMIUM_BP.toFixed(1)} bp/wk`],
-        ].map(([k, v], i) => (
+        {(
+          [
+            ["Gap volatility", `${(model.sigma / 100).toFixed(2)}%`],
+            // The model only binds when it is tighter than the configured weekend limit.
+            ["Model limit", `${(model.weekendLtv / 100).toFixed(2)}%`, model.weekendLtv >= configured ? "not binding" : "binding"],
+            ["Enforced", `${(enforced / 100).toFixed(0)}%`],
+            ["Premium", `${PREMIUM_BP.toFixed(1)} bp/wk`],
+          ] as [string, string, string?][]
+        ).map(([k, v, note], i) => (
           <div key={k} className="bg-ink p-3.5">
             <dt className="text-[11.5px] text-fg-3">{k}</dt>
             <dd className={`num mt-1.5 text-[16px] ${i >= 2 ? "text-glow" : "text-fg"}`}>{v}</dd>
+            {note && <dd className="mt-0.5 text-[11px] text-fg-3">{note}</dd>}
           </div>
         ))}
       </dl>

@@ -1,12 +1,15 @@
 import { BASE_RATE_PCT, MARKETS, PROTECTED_TARGET_PCT, gapModel, premiumAprPct, premiumPpmFromSigma } from "@/lib/markets";
 
-// The landing page's worked example: an NVDA market, 100k USDG vault, 25% Boost, fully lent.
-const nvda = MARKETS.NVDA;
+// The landing page's and docs' worked example: the TSLA market (live on Robinhood Chain testnet),
+// 100k USDG vault, 25% Boost, fully lent.
+export const EXAMPLE_SYMBOL = "TSLA";
+export const EXAMPLE_MARKET = MARKETS[EXAMPLE_SYMBOL];
+const m = EXAMPLE_MARKET;
 
 export const BASE = BASE_RATE_PCT;
 export const TARGET = PROTECTED_TARGET_PCT;
-export const SIGMA_BPS = gapModel(nvda.gaps, nvda.risk.liqLtvBps).sigma;
-/** Weekend premium for NVDA, per weekend in bps and as a yearly rate in %. */
+export const SIGMA_BPS = gapModel(m.gaps, m.risk.liqLtvBps).sigma;
+/** Weekend premium for the example stock, per weekend in bps and as a yearly rate in %. */
 export const PREMIUM_BP = premiumPpmFromSigma(SIGMA_BPS) / 100;
 export const PREMIUM_APR = premiumAprPct(premiumPpmFromSigma(SIGMA_BPS));
 /** What a fully lent pool earns a year: the base rate plus the weekend premium. */
