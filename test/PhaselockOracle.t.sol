@@ -152,6 +152,43 @@ contract PhaselockOracleTest is BaseTest {
         assertEq(uint8(_session()), uint8(PhaselockOracle.Session.Halted));
     }
 
+    // ------------------------------------------------------------------
+    // USDG valuation
+    // ------------------------------------------------------------------
+
+    function _stableFeed(int256 price) internal returns (MockFeed usdgFeed) {
+        usdgFeed = new MockFeed(8);
+        usdgFeed.set(price, block.timestamp);
+        vm.prank(owner);
+        oracle.setStableFeed(usdgFeed, 26 hours, 200); // 2% depeg tolerance
+    }
+
+    function test_stableFeed_pricesInUsdg() public {
+        _stableFeed(0.99e8); // USDG slightly below $1 => each stock costs more USDG
+        PhaselockOracle.Quote memory q = oracle.quote(address(nvda));
+        assertEq(uint8(q.session), uint8(PhaselockOracle.Session.Live));
+        assertEq(q.price, uint256(180e18) * 1e18 / 0.99e18);
+    }
+
+    function test_stableFeed_depegHaltsEverything() public {
+        MockFeed usdgFeed = _stableFeed(0.97e8); // 3% off peg
+        assertEq(uint8(_session()), uint8(PhaselockOracle.Session.Halted));
+        (bool ok,) = oracle.stableUsd();
+        assertFalse(ok);
+
+        usdgFeed.set(1.03e8, block.timestamp); // the other way
+        assertEq(uint8(_session()), uint8(PhaselockOracle.Session.Halted));
+
+        usdgFeed.set(1.0e8, block.timestamp); // back on peg
+        assertEq(uint8(_session()), uint8(PhaselockOracle.Session.Live));
+    }
+
+    function test_stableFeed_staleHalts() public {
+        _stableFeed(1e8);
+        _warpLive(block.timestamp + 27 hours); // stock feed fresh, USDG feed silent
+        assertEq(uint8(_session()), uint8(PhaselockOracle.Session.Halted));
+    }
+
     function test_plainErc20WithoutCorporateActionGetters() public {
         MockERC20 plain = new MockERC20("Plain", "PLN", 18);
         vm.prank(owner);

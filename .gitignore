@@ -5,3 +5,6 @@ broadcast/
 node_modules/
 # private working notes (earlier research, not part of the submission)
 notes/
+
+# Stylus build output
+stylus/**/target/

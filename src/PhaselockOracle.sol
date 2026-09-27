@@ -13,8 +13,11 @@ import {IStockToken} from "./interfaces/IStockToken.sol";
 /// the last value all weekend. Freshness therefore cannot tell open from closed: the session is
 /// derived from the weekly schedule (plus owner-set holiday closures), and freshness is only used
 /// to require a first post-reopen print and to detect a feed that has stopped keeping its heartbeat.
-/// @dev Prices are per raw token (1e18 raw units) in USD with 18 decimals. Robinhood feeds
-/// already include the corporate-action multiplier, so no multiplier is applied here.
+/// Prices are quoted in the loan stablecoin (USDG). When a USDG/USD feed is configured, every
+/// stock price is divided by the live USDG price, and the whole oracle halts if USDG strays more
+/// than `depegToleranceBps` from $1, so no market lends or liquidates through a depeg.
+/// @dev Prices are per raw token (1e18 raw units) with 18 decimals. Robinhood feeds already
+/// include the corporate-action multiplier, so no multiplier is applied here.
 contract PhaselockOracle is Ownable2Step {
     enum Session {
         Live, // market open, price published since it opened
@@ -25,7 +28,7 @@ contract PhaselockOracle is Ownable2Step {
     }
 
     struct Quote {
-        uint256 price; // USD per whole token, 1e18 = $1; last published value when Closed
+        uint256 price; // USDG per whole token, 1e18 = 1 USDG; last published value when Closed
         Session session;
         uint16 rampBps; // progress through the closing window, 0..10_000 (only in Closing)
         uint256 updatedAt;
@@ -66,10 +69,16 @@ contract PhaselockOracle is Ownable2Step {
     /// @notice One-off market closure (exchange holiday), set ahead of time by the owner.
     Closure public closure;
 
+    /// @notice USDG/USD feed; address(0) values USDG at exactly $1.
+    AggregatorV3Interface public stableFeed;
+    uint32 public stableMaxStaleness;
+    uint16 public depegToleranceBps;
+
     event AssetSet(address indexed token, address feed, uint32 maxStaleness, bool enabled);
     event SequencerFeedSet(address feed, uint32 gracePeriod);
     event ScheduleSet(uint32 weeklyCloseOffset, uint32 weekendLength, uint32 closingWindow, uint32 corporateActionLead);
     event ClosureSet(uint64 start, uint64 end);
+    event StableFeedSet(address feed, uint32 maxStaleness, uint16 depegToleranceBps);
 
     error InvalidSchedule();
     error InvalidClosure();
@@ -96,6 +105,19 @@ contract PhaselockOracle is Ownable2Step {
         sequencerFeed = feed;
         sequencerGracePeriod = gracePeriod;
         emit SequencerFeedSet(address(feed), gracePeriod);
+    }
+
+    /// @notice Price the loan stablecoin with a live feed instead of assuming $1.
+    function setStableFeed(AggregatorV3Interface feed, uint32 maxStaleness, uint16 depegToleranceBps_)
+        external
+        onlyOwner
+    {
+        if (address(feed) != address(0) && feed.decimals() > 18) revert FeedDecimalsTooHigh();
+        if (depegToleranceBps_ >= BPS) revert InvalidSchedule();
+        stableFeed = feed;
+        stableMaxStaleness = maxStaleness;
+        depegToleranceBps = depegToleranceBps_;
+        emit StableFeedSet(address(feed), maxStaleness, depegToleranceBps_);
     }
 
     /// @notice Owner updates the offset at each daylight-saving change (Saturday 00:00 UTC in
@@ -148,7 +170,9 @@ contract PhaselockOracle is Ownable2Step {
         if (!ok || answer <= 0 || updatedAt == 0 || updatedAt > block.timestamp) return q;
         if (_corporateActionPending(token, updatedAt)) return q;
 
-        q.price = uint256(answer) * 10 ** (18 - a.feed.decimals());
+        (bool stableOk, uint256 stablePrice) = stableUsd();
+        if (!stableOk) return q;
+        q.price = (uint256(answer) * 10 ** (18 - a.feed.decimals()) * 1e18) / stablePrice;
         q.updatedAt = updatedAt;
 
         // Closed by the clock, or reopened but still showing the pre-close price.
@@ -170,6 +194,20 @@ contract PhaselockOracle is Ownable2Step {
         } else {
             q.session = Session.Live;
         }
+    }
+
+    /// @notice USD price of the loan stablecoin (1e18 = $1) and whether it is usable: fresh and
+    /// within the depeg tolerance. Stablecoin feeds run 24/7, so staleness applies at all times.
+    function stableUsd() public view returns (bool ok, uint256 price) {
+        AggregatorV3Interface feed = stableFeed;
+        if (address(feed) == address(0)) return (true, 1e18);
+        (bool live, int256 answer,, uint256 updatedAt) = _latest(feed);
+        if (!live || answer <= 0 || updatedAt > block.timestamp || block.timestamp - updatedAt > stableMaxStaleness) {
+            return (false, 0);
+        }
+        price = uint256(answer) * 10 ** (18 - feed.decimals());
+        uint256 deviation = price > 1e18 ? price - 1e18 : 1e18 - price;
+        ok = deviation * BPS <= uint256(depegToleranceBps) * 1e18;
     }
 
     /// @notice True during the weekly weekend window or an owner-set closure.

@@ -6,6 +6,8 @@ import {PhaselockOracle} from "../src/PhaselockOracle.sol";
 import {AfterglowMarket} from "../src/AfterglowMarket.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
+import {IGapGuard} from "../src/interfaces/IGapGuard.sol";
+import {MockGapGuard} from "./mocks/Mocks.sol";
 
 contract AfterglowMarketTest is BaseTest {
     AfterglowMarket internal market;
@@ -27,6 +29,7 @@ contract AfterglowMarketTest is BaseTest {
                 gracePeriod: 2 days,
                 rateWad: RATE,
                 risk: AfterglowMarket.RiskParams({baseLtvBps: 5500, weekendLtvBps: 4500, liqLtvBps: 6500, liqBonusBps: 700}),
+                supplyCap: type(uint256).max,
                 owner: owner,
                 guardian: guardian,
                 name: "Afterglow USDG/NVDA 28d",
@@ -195,6 +198,51 @@ contract AfterglowMarketTest is BaseTest {
     }
 
     // ------------------------------------------------------------------
+    // GapGuard (Stylus) hook
+    // ------------------------------------------------------------------
+
+    function _gapGuard(uint16 modelled, bool broken) internal returns (MockGapGuard g) {
+        g = new MockGapGuard();
+        g.set(modelled, broken);
+        vm.prank(owner);
+        market.setGapGuard(IGapGuard(address(g)));
+    }
+
+    function test_gapGuard_tightensWeekendLtvAndRamp() public {
+        _gapGuard(3_500, false); // model says 35% is the safe weekend LTV
+        assertEq(market.weekendLtvBps(), 3_500);
+
+        _warpLive(MONDAY + 5 days - 2 hours); // halfway through the closing window
+        (,, uint256 maxLtv,) = market.marketStatus();
+        assertEq(maxLtv, 4_500); // 55% -> 35%, halfway
+    }
+
+    function test_gapGuard_cannotLoosen() public {
+        _gapGuard(6_000, false);
+        assertEq(market.weekendLtvBps(), 4_500);
+    }
+
+    function test_gapGuard_failureFallsBackToConfigured() public {
+        _gapGuard(3_000, true);
+        assertEq(market.weekendLtvBps(), 4_500);
+    }
+
+    function test_gapGuard_appliesToWeekendWithdrawals() public {
+        _borrow(6_000e6); // ~33% of $18,000
+        _gapGuard(3_500, false);
+        vm.warp(MONDAY + 5 days + 12 hours); // Saturday
+
+        // 90 NVDA left => 6,000 / 16,200 = 37%: fine under the configured 45%, but above the model's 35%
+        vm.prank(borrower);
+        vm.expectRevert();
+        market.withdrawCollateral(10e18, borrower);
+
+        // 98 NVDA left => 6,000 / 17,640 = 34%: allowed
+        vm.prank(borrower);
+        market.withdrawCollateral(2e18, borrower);
+    }
+
+    // ------------------------------------------------------------------
     // Liquidation
     // ------------------------------------------------------------------
 
@@ -279,6 +327,24 @@ contract AfterglowMarketTest is BaseTest {
         uint256 before = market.convertToAssets(1e18);
         usdg.mint(address(market), 1_000_000e6);
         assertEq(market.convertToAssets(1e18), before);
+    }
+
+    function test_supplyCap_limitsDeposits() public {
+        vm.prank(owner);
+        market.setSupplyCap(LEND + 1_000e6);
+        assertEq(market.maxDeposit(lender), 1_000e6);
+
+        usdg.mint(lender, 2_000e6);
+        vm.startPrank(lender);
+        vm.expectRevert();
+        market.deposit(1_001e6, lender);
+        market.deposit(1_000e6, lender);
+        vm.stopPrank();
+        assertEq(market.maxDeposit(lender), 0);
+        assertEq(market.maxMint(lender), 0);
+
+        vm.expectRevert();
+        market.setSupplyCap(0); // only owner
     }
 
     function test_noDepositsAfterMaturity() public {

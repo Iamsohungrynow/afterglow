@@ -69,3 +69,19 @@ contract MockFeed is AggregatorV3Interface {
         return (1, answer, startedAt, updatedAt, 1);
     }
 }
+
+/// @notice Stand-in for the GapGuard Stylus contract (Foundry's EVM cannot execute Stylus wasm).
+contract MockGapGuard {
+    uint16 public modelled;
+    bool public broken;
+
+    function set(uint16 modelled_, bool broken_) external {
+        modelled = modelled_;
+        broken = broken_;
+    }
+
+    function weekendLtvBps(address, uint16) external view returns (uint16) {
+        require(!broken, "model down");
+        return modelled;
+    }
+}

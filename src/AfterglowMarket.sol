@@ -11,6 +11,7 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {PhaselockOracle} from "./PhaselockOracle.sol";
+import {IGapGuard} from "./interfaces/IGapGuard.sol";
 
 /// @title AfterglowMarket
 /// @notice Fixed-rate, fixed-maturity USDG loans against one tokenized stock.
@@ -51,6 +52,7 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         uint32 gracePeriod;
         uint256 rateWad; // simple annual rate, 1e18 = 100%
         RiskParams risk;
+        uint256 supplyCap; // max total assets lenders may deposit up to; type(uint256).max = none
         address owner;
         address guardian;
         string name;
@@ -67,6 +69,8 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
 
     RiskParams public risk;
     address public guardian;
+    /// @notice Optional Stylus gap-risk model. It can only tighten the weekend LTV, never loosen it.
+    IGapGuard public gapGuard;
 
     /// @notice Loan tokens held by the market. Tracked internally so donations cannot move share price.
     uint256 public cash;
@@ -74,6 +78,8 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     uint256 public totalFace;
     /// @notice Cumulative face value written off after collateral ran out.
     uint256 public badDebt;
+    /// @notice Deposits stop once total assets reach this. Keeps early deployments small.
+    uint256 public supplyCap;
 
     mapping(address borrower => Position) public positions;
 
@@ -87,6 +93,8 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     event BadDebt(address indexed borrower, uint256 face);
     event RiskParamsSet(RiskParams risk);
     event GuardianSet(address guardian);
+    event SupplyCapSet(uint256 supplyCap);
+    event GapGuardSet(address gapGuard);
 
     error ZeroAmount();
     error Matured();
@@ -115,6 +123,7 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         rateWad = c.rateWad;
         valueScale = 10 ** (uint256(collateralDecimals) + 18 - loanDecimals);
         guardian = c.guardian;
+        supplyCap = c.supplyCap;
         _setRiskParams(c.risk);
     }
 
@@ -180,7 +189,7 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         if (p.face != 0) {
             PhaselockOracle.Quote memory q = oracle.quote(address(collateralToken));
             if (q.session == PhaselockOracle.Session.Halted) revert MarketHalted();
-            uint256 limit = q.session == PhaselockOracle.Session.Closed ? risk.weekendLtvBps : maxBorrowLtvBps(q);
+            uint256 limit = q.session == PhaselockOracle.Session.Closed ? weekendLtvBps() : maxBorrowLtvBps(q);
             _requireLtv(p, q.price, limit);
         }
 
@@ -261,12 +270,23 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     /// @notice Borrowing limit for the given quote: base LTV while live, ramping linearly to the
     /// weekend LTV through the closing window, zero otherwise.
     function maxBorrowLtvBps(PhaselockOracle.Quote memory q) public view returns (uint256) {
-        RiskParams memory r = risk;
-        if (q.session == PhaselockOracle.Session.Live) return r.baseLtvBps;
+        uint256 base = risk.baseLtvBps;
+        if (q.session == PhaselockOracle.Session.Live) return base;
         if (q.session == PhaselockOracle.Session.Closing) {
-            return r.baseLtvBps - (uint256(r.baseLtvBps - r.weekendLtvBps) * q.rampBps) / BPS;
+            return base - ((base - weekendLtvBps()) * q.rampBps) / BPS;
         }
         return 0;
+    }
+
+    /// @notice LTV a position may carry into the weekend: the configured value, tightened by the
+    /// GapGuard model when one is set. A failing or missing model falls back to the configured value.
+    function weekendLtvBps() public view returns (uint256 ltv) {
+        ltv = risk.weekendLtvBps;
+        IGapGuard g = gapGuard;
+        if (address(g) == address(0)) return ltv;
+        try g.weekendLtvBps(address(collateralToken), risk.liqLtvBps) returns (uint16 modelled) {
+            if (modelled < ltv) ltv = modelled;
+        } catch {}
     }
 
     /// @notice Current session and borrowing limit, for front ends.
@@ -304,11 +324,16 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     }
 
     function maxDeposit(address) public view override returns (uint256) {
-        return paused() || block.timestamp >= maturity ? 0 : type(uint256).max;
+        if (paused() || block.timestamp >= maturity) return 0;
+        uint256 cap = supplyCap;
+        if (cap == type(uint256).max) return cap;
+        uint256 assets = totalAssets();
+        return cap > assets ? cap - assets : 0;
     }
 
-    function maxMint(address) public view override returns (uint256) {
-        return paused() || block.timestamp >= maturity ? 0 : type(uint256).max;
+    function maxMint(address receiver) public view override returns (uint256) {
+        uint256 assets = maxDeposit(receiver);
+        return assets == type(uint256).max ? assets : _convertToShares(assets, Math.Rounding.Floor);
     }
 
     /// @dev Lenders can only take out what is not lent.
@@ -350,6 +375,16 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
 
     function setRiskParams(RiskParams calldata r) external onlyOwner {
         _setRiskParams(r);
+    }
+
+    function setGapGuard(IGapGuard gapGuard_) external onlyOwner {
+        gapGuard = gapGuard_;
+        emit GapGuardSet(address(gapGuard_));
+    }
+
+    function setSupplyCap(uint256 supplyCap_) external onlyOwner {
+        supplyCap = supplyCap_;
+        emit SupplyCapSet(supplyCap_);
     }
 
     /// @notice address(0) leaves pausing to the owner alone.
