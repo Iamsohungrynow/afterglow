@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { fmt, fmtDate, fmtPct } from "@/lib/format";
+import { NO_SCROLLBAR, fmt, fmtDate, fmtPct } from "@/lib/format";
 import { TokenMark } from "@/components/ui/primitives";
 import type { MarketView } from "@/hooks/useMarket";
 import type { PositionView } from "@/hooks/usePosition";
@@ -33,7 +33,7 @@ export function BottomPanel({
     pos && m
       ? ([
           pos.protectedValue > 0 && [pair, "Protected", `${fmt(pos.protectedValue)} USDG`, <span key="t"><span className="num">{m.tranches.seniorAprPct.toFixed(2)}%</span>, paid first</span>, fmtDate(m.maturity)],
-          pos.boostValue > 0 && [pair, "Boost", `${fmt(pos.boostValue)} USDG`, "Residual, first loss", fmtDate(m.maturity)],
+          pos.boostValue > 0 && [pair, "Boost", `${fmt(pos.boostValue)} USDG`, "Earns the rest, first loss", fmtDate(m.maturity)],
           pos.lent > 0 && [pair, "Pool", `${fmt(pos.lent)} USDG`, <span key="t"><span className="num">{m.aprPct.toFixed(2)}%</span> x utilisation</span>, fmtDate(m.maturity)],
         ] as (React.ReactNode[] | false)[]).filter((r): r is React.ReactNode[] => Array.isArray(r))
       : [];
@@ -126,7 +126,7 @@ function Pair({ symbol }: { symbol: string }) {
 
 function Table({ cols, rows }: { cols: Col[]; rows: React.ReactNode[][] }) {
   return (
-    <div className="overflow-x-auto">
+    <div className={`overflow-x-auto ${NO_SCROLLBAR}`}>
       <table className="w-full min-w-[760px] text-[12.5px]">
         <thead>
           <tr className="text-[11px] text-fg-3">

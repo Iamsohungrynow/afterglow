@@ -8,6 +8,7 @@ import { compact } from "@/components/markets/format";
 import { useNow } from "@/hooks/useNow";
 import { useReadChain } from "@/hooks/useReadChain";
 import { MARKETS, marketsFor } from "@/lib/markets";
+import { NO_SCROLLBAR } from "@/lib/format";
 
 export default function MarketsPage() {
   const chainId = useReadChain();
@@ -50,8 +51,8 @@ export default function MarketsPage() {
           </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <div className="min-w-[1090px]">
+        <div className={`overflow-x-auto ${NO_SCROLLBAR}`}>
+          <div className="sm:min-w-[1090px]">
             <div className={`${MARKET_GRID} border-t border-line py-3 text-[12px] whitespace-nowrap text-fg-3`}>
               {MARKET_COLUMNS.map((c) => (
                 <div key={c.label} className={c.right ? "text-right" : ""}>

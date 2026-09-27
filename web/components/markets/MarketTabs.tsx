@@ -7,7 +7,7 @@ import { WeekClock } from "@/components/WeekClock";
 import { GapBars } from "@/components/GapBars";
 import type { MarketView } from "@/hooks/useMarket";
 import { MARKETS, gapModel } from "@/lib/markets";
-import { fmtDate, fmtPct } from "@/lib/format";
+import { fmtDate, fmtLtv, fmtPct, fmtPremium } from "@/lib/format";
 import { fmtSeconds, maturityLeft } from "./format";
 
 const graceAbi = [
@@ -32,8 +32,8 @@ export function MarketTab({ m, now }: { m?: MarketView; now?: number }) {
       <div className="max-w-[70ch] space-y-3 text-[13px] leading-relaxed text-fg-2">
         <p>
           The oracle follows the US stock week. While the market is <span className="text-fg">Live</span> you can borrow up to the base
-          LTV ({m ? fmtPct(m.risk.baseLtvBps) : "-"}). In the four hours before the Friday close (20:00 ET, Saturday 00:00 UTC) the
-          session is <span className="text-fg">Closing</span> and the limit ramps down to the weekend LTV ({m ? fmtPct(m.weekendLtvBps) : "-"}).
+          LTV ({m ? fmtLtv(m.risk.baseLtvBps) : "-"}). In the four hours before the Friday close (20:00 ET, Saturday 00:00 UTC) the
+          session is <span className="text-fg">Closing</span> and the limit ramps down to the weekend LTV ({m ? fmtLtv(m.weekendLtvBps) : "-"}).
         </p>
         <p>
           From the close until the Sunday 20:00 ET reopen the market is <span className="text-fg">Closed</span>: no new borrowing,
@@ -77,16 +77,16 @@ export function RiskTab({ m, chainId, now }: { m?: MarketView; chainId?: number;
         <h3 className="text-[13.5px] text-fg">Loan-to-value limits</h3>
         <div className="mt-4 space-y-3.5">
           <Row label="Base LTV" hint="Borrow limit while the market is live">
-            {m ? fmtPct(m.risk.baseLtvBps) : s}
+            {m ? fmtLtv(m.risk.baseLtvBps) : s}
           </Row>
-          <Row label="Weekend LTV" hint={tightened ? `Tightened by GapGuard from ${fmtPct(m.risk.weekendLtvBps)}` : "Limit carried over the weekend"}>
-            {m ? fmtPct(m.weekendLtvBps) : s}
+          <Row label="Weekend LTV" hint={tightened ? `Tightened by GapGuard from ${fmtLtv(m.risk.weekendLtvBps)}` : "Limit carried over the weekend"}>
+            {m ? <span className="text-glow">{fmtLtv(m.weekendLtvBps)}</span> : s}
           </Row>
           <Row label="Liquidation LTV" hint="Loans above this can be liquidated">
-            {m ? fmtPct(m.risk.liqLtvBps) : s}
+            {m ? <span className="text-halt">{fmtLtv(m.risk.liqLtvBps)}</span> : s}
           </Row>
           <Row label="Liquidation bonus" hint="Extra collateral paid to the liquidator">
-            {m ? fmtPct(m.risk.liqBonusBps) : s}
+            {m ? fmtLtv(m.risk.liqBonusBps) : s}
           </Row>
         </div>
       </Card>
@@ -115,6 +115,9 @@ export function WeekendTab({ m, symbol }: { m?: MarketView; symbol: string }) {
   const liq = m?.risk.liqLtvBps ?? info.risk.liqLtvBps;
   const model = gapModel(info.gaps, liq);
   const pct = (bps: number) => `${(bps / 100).toFixed(2)}%`;
+  const inUse = m?.weekendLtvBps;
+  // GapGuard only tightens: it binds when its limit is below the configured weekend LTV.
+  const binding = model.weekendLtv < (m?.risk.weekendLtvBps ?? info.risk.weekendLtvBps);
 
   return (
     <div className="space-y-5">
@@ -129,18 +132,26 @@ export function WeekendTab({ m, symbol }: { m?: MarketView; symbol: string }) {
         <div className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-[10px] border border-line bg-line md:grid-cols-5">
           {[
             { label: "Gap volatility (σ)", value: pct(model.sigma), tone: "text-glow" },
-            { label: "Safety buffer", value: pct(model.buffer), tone: "text-fg" },
-            { label: "Model weekend LTV", value: fmtPct(model.weekendLtv, 2), tone: "text-fg" },
-            { label: "Weekend LTV in use", value: m ? fmtPct(m.weekendLtvBps, 2) : "-", tone: "text-glow" },
+            { label: "Safety buffer (3σ, min 5%)", value: fmtPct(model.buffer, 1), tone: "text-fg" },
+            {
+              label: "GapGuard limit",
+              value: fmtLtv(model.weekendLtv),
+              tone: binding ? "text-glow" : "text-fg-2",
+              note: inUse === undefined ? undefined : binding ? "binding" : "not binding",
+            },
+            { label: "Weekend limit in use", value: m ? fmtLtv(m.weekendLtvBps) : "-", tone: "text-glow" },
             {
               label: "Weekend premium",
-              value: m?.premiumPpm !== undefined ? `${(m.premiumPpm / 100).toFixed(1)} bp` : "-",
+              value: fmtPremium(m?.premiumPpm),
               tone: m?.premiumPpm !== undefined ? "text-glow" : "text-fg-3",
             },
-          ].map((x) => (
-            <div key={x.label} className="bg-ink-2 p-4">
+          ].map((x: { label: string; value: string; tone: string; note?: string }, i, all) => (
+            <div key={x.label} className={`bg-ink-2 p-4 ${i === all.length - 1 ? "col-span-2 md:col-span-1" : ""}`}>
               <div className="text-[12px] text-fg-3">{x.label}</div>
-              <div className={`num mt-1.5 text-[18px] ${x.tone}`}>{x.value}</div>
+              <div className={`num mt-1.5 text-[18px] ${x.tone}`}>
+                {x.value}
+                {x.note && <span className="ml-2 font-sans text-[11.5px] text-fg-3">{x.note}</span>}
+              </div>
             </div>
           ))}
         </div>

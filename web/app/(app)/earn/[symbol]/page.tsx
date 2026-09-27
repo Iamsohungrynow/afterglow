@@ -8,10 +8,10 @@ import { Segmented } from "@/components/earn/Segmented";
 import { TrancheActionCard } from "@/components/earn/TrancheActionCard";
 import { useReadChain } from "@/hooks/useReadChain";
 import { useNow } from "@/hooks/useNow";
-import { boostAprPct, poolIncome, useMarket, utilisation, type MarketView } from "@/hooks/useMarket";
+import { INDICATIVE_NOTE, boostDisplay, poolIncome, useMarket, utilisation, vaultCoverBps, vaultEmpty, type MarketView } from "@/hooks/useMarket";
 import { MARKETS, deploymentFor, gapModel, premiumAprPct } from "@/lib/markets";
 import { chains } from "@/lib/chains";
-import { daysLeft, fmt, fmtDate, fmtPct, short } from "@/lib/format";
+import { fmt, fmtDate, fmtDays, fmtLtv, fmtPct, fmtPremium, short } from "@/lib/format";
 
 type Tranche = "protected" | "boost";
 const CONTAINER = "mx-auto w-full max-w-[1200px] px-4 py-10 md:px-6";
@@ -62,15 +62,17 @@ function VaultDetail() {
   const chain = chains.find((c) => c.id === chainId);
   const t = m?.tranches;
   const value = isP ? t?.seniorValue : t?.juniorValue;
-  const boost = m ? boostAprPct(m) : undefined;
-  const apy = isP ? t?.seniorAprPct : boost;
+  const boost = m ? boostDisplay(m) : undefined;
+  const apy = isP ? t?.seniorAprPct : boost?.pct;
+  const cover = t ? vaultCoverBps(t) : undefined;
+  const empty = t ? vaultEmpty(t) : false;
   const util = m ? utilisation(m) : undefined;
 
   const setTranche = (v: Tranche) => router.replace(`/earn/${symbol}?t=${v}`, { scroll: false });
 
   return (
     <div className={CONTAINER}>
-      <div className="grid gap-10 lg:grid-cols-[1fr_400px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-10 lg:grid-cols-[minmax(0,1fr)_400px]">
         <div className="min-w-0">
           <BackLink href="/earn">Earn</BackLink>
 
@@ -103,22 +105,33 @@ function VaultDetail() {
             />
             <BigStat
               label={isP ? "APY, target" : "APY, estimated"}
-              value={apy === undefined ? (m ? (isP ? "-" : "residual") : <Skel w={70} h={26} />) : apy.toFixed(2)}
+              value={
+                apy === undefined ? (
+                  m ? "-" : <Skel w={70} h={26} />
+                ) : (
+                  <span className={isP ? undefined : "text-glow"}>
+                    {!isP && boost?.indicative ? "~" : ""}
+                    {apy.toFixed(!isP && boost?.indicative ? 0 : 2)}
+                  </span>
+                )
+              }
               unit={apy === undefined ? undefined : "%"}
-              sub={isP ? "Paid before Boost" : "What is left after Protected"}
+              sub={isP ? "Paid before Boost" : boost?.indicative ? "If fully lent" : "What is left after Protected"}
             />
             <BigStat
               label="Vault cover"
-              value={t?.coverBps === undefined ? (m ? "-" : <Skel w={70} h={26} />) : (t.coverBps / 100).toFixed(1)}
-              unit={t?.coverBps === undefined ? undefined : "%"}
-              sub={t ? `Boost share, min ${fmtPct(t.minJuniorBps, 0)}` : undefined}
+              value={cover === undefined ? (m ? "-" : <Skel w={70} h={26} />) : (cover / 100).toFixed(1)}
+              unit={cover === undefined ? undefined : "%"}
+              sub={empty ? "No deposits yet" : t ? `Boost share, min ${fmtPct(t.minJuniorBps, 0)}` : undefined}
             />
             <BigStat
               label="Pool utilisation"
               value={util === undefined ? (m ? "-" : <Skel w={70} h={26} />) : (util * 100).toFixed(1)}
               unit={util === undefined ? undefined : "%"}
               sub={
-                m?.totalAssets !== undefined
+                empty
+                  ? "No deposits yet"
+                  : m?.totalAssets !== undefined
                   ? `${fmt(m.totalAssets * (util ?? 0), 0)} of ${fmt(m.totalAssets, 0)} lent` +
                     (m.idle ? `, ${fmt(m.idle, 0)} in savings` : "")
                   : undefined
@@ -169,6 +182,7 @@ function CopyAddress({ address }: { address: string }) {
 function Waterfall({ m, tranche, util }: { m: MarketView; tranche: Tranche; util: number | undefined }) {
   const t = m.tranches;
   const hasVals = t.seniorValue !== undefined && t.juniorValue !== undefined;
+  const empty = vaultEmpty(t);
   const total = hasVals ? t.seniorValue! + t.juniorValue! : undefined;
   const lent = total !== undefined && util !== undefined ? total * util : undefined;
   const swept = total !== undefined && m.totalAssets ? total * ((m.idle ?? 0) / m.totalAssets) : 0;
@@ -176,12 +190,12 @@ function Waterfall({ m, tranche, util }: { m: MarketView; tranche: Tranche; util
   const seniorDue = t.seniorValue !== undefined ? t.seniorValue * (t.seniorAprPct / 100) : undefined;
   const seniorPaid = income !== undefined && seniorDue !== undefined ? Math.min(income, seniorDue) : undefined;
   const boostIncome = income !== undefined && seniorDue !== undefined ? income - seniorDue : undefined;
-  const boost = boostAprPct(m);
+  const boost = boostDisplay(m);
   const pShare = income && seniorPaid !== undefined ? Math.max(0, Math.min(1, seniorPaid / income)) : undefined;
 
   const step = (active: boolean) =>
     `flex-1 rounded-[10px] border p-4 ${active ? "border-glow/35 bg-glow/[0.04]" : "border-line bg-ink"}`;
-  const arrow = <ArrowRight size={16} className="mx-auto shrink-0 rotate-90 text-fg-3 md:rotate-0" aria-hidden />;
+  const arrow = <ArrowRight size={16} className="mx-auto shrink-0 rotate-90 self-center text-fg-3 md:rotate-0" aria-hidden />;
 
   return (
     <Card className="mt-10 p-5 md:p-6">
@@ -191,21 +205,23 @@ function Waterfall({ m, tranche, util }: { m: MarketView; tranche: Tranche; util
         the vault splits it in order.
       </p>
 
-      <div className="mt-5 flex flex-col items-stretch gap-2 md:flex-row md:items-center">
+      <div className="mt-5 flex flex-col items-stretch gap-2 md:flex-row">
         <div className={step(false)}>
           <div className="text-[12px] text-fg-3">Borrowers pay</div>
           <div className="num mt-1.5 text-[22px] text-fg">{m.aprPct.toFixed(2)}%</div>
           <div className="num mt-1.5 text-[12px] leading-snug text-fg-2">
             fixed on {lent === undefined ? "lent USDG" : `${fmt(lent, 0)} USDG lent`}
             {m.premiumPpm !== undefined && (
-              <span className="block">+ {premiumAprPct(m.premiumPpm).toFixed(2)}% weekend premium, priced by GapGuard</span>
+              <span className="block">
+                + {premiumAprPct(m.premiumPpm).toFixed(2)}% weekend premium ({fmtPremium(m.premiumPpm)}), priced by GapGuard
+              </span>
             )}
             {swept > 0 && m.savingsAprPct !== undefined && (
               <span className="block">
                 + {m.savingsAprPct.toFixed(2)}% savings on {fmt(swept, 0)} USDG unlent
               </span>
             )}
-            {income !== undefined && <span className="block text-fg-3">{fmt(income, 0)} USDG a year</span>}
+            {income !== undefined && !empty && <span className="block text-fg-3">{fmt(income, 0)} USDG a year</span>}
           </div>
         </div>
         {arrow}
@@ -213,17 +229,18 @@ function Waterfall({ m, tranche, util }: { m: MarketView; tranche: Tranche; util
           <div className="text-[12px] text-fg-3">Protected, paid first</div>
           <div className="num mt-1.5 text-[22px] text-fg">{t.seniorAprPct.toFixed(2)}%</div>
           <div className="num mt-1.5 text-[12px] leading-snug text-fg-2">
-            target on {t.seniorValue === undefined ? "Protected deposits" : `${fmt(t.seniorValue, 0)} USDG`}
-            {seniorDue !== undefined && <span className="block text-fg-3">{fmt(seniorDue, 0)} USDG a year</span>}
+            target on {t.seniorValue === undefined || empty ? "Protected deposits" : `${fmt(t.seniorValue, 0)} USDG`}
+            {seniorDue !== undefined && !empty && <span className="block text-fg-3">{fmt(seniorDue, 0)} USDG a year</span>}
           </div>
         </div>
         {arrow}
         <div className={step(tranche === "boost")}>
           <div className="text-[12px] text-fg-3">Boost keeps the rest</div>
-          <div className="num mt-1.5 text-[22px] text-glow">{boost === undefined ? "residual" : `${boost.toFixed(2)}%`}</div>
+          <div className="num mt-1.5 text-[22px] text-glow">{boost.text}</div>
           <div className="num mt-1.5 text-[12px] leading-snug text-fg-2">
-            on {t.juniorValue === undefined ? "Boost deposits" : `${fmt(t.juniorValue, 0)} USDG`}, takes losses first
-            {boostIncome !== undefined && <span className="block text-fg-3">{fmt(boostIncome, 0)} USDG a year</span>}
+            {boost.indicative && <span className="block text-fg-3">{INDICATIVE_NOTE}</span>}
+            on {t.juniorValue === undefined || boost.indicative ? "Boost deposits" : `${fmt(t.juniorValue, 0)} USDG`}, takes losses first
+            {boostIncome !== undefined && !empty && <span className="block text-fg-3">{fmt(boostIncome, 0)} USDG a year</span>}
           </div>
         </div>
       </div>
@@ -247,6 +264,12 @@ function Waterfall({ m, tranche, util }: { m: MarketView; tranche: Tranche; util
       )}
       {!hasVals && (
         <p className="mt-4 text-[12.5px] text-fg-3">Deposit figures appear once the vault is live on this network. Rates shown are the configured ones.</p>
+      )}
+      {hasVals && boost.indicative && (
+        <p className="mt-4 text-[12.5px] text-fg-3">
+          No deposits yet, so the Boost figure is indicative: the pool fully lent at {m.aprPct.toFixed(2)}% plus the weekend premium,
+          with 25% of the vault in Boost.
+        </p>
       )}
     </Card>
   );
@@ -284,7 +307,7 @@ function Overview({ m, tranche, now }: { m: MarketView; tranche: Tranche; now: n
           title="Loan terms"
           rows={[
             ["Fixed borrower APR", `${m.aprPct.toFixed(2)}%`],
-            ["Maturity", now === undefined ? fmtDate(m.maturity) : `${fmtDate(m.maturity)}, ${daysLeft(m.maturity, now).toFixed(0)} days`],
+            ["Maturity", now === undefined ? fmtDate(m.maturity) : `${fmtDate(m.maturity)}, ${fmtDays(m.maturity, now)} left`],
             ["Collateral", `${m.symbol}, ${info?.name ?? ""}`],
             ["Collateral price", `${fmt(m.price)} USDG`],
           ]}
@@ -292,9 +315,9 @@ function Overview({ m, tranche, now }: { m: MarketView; tranche: Tranche; now: n
         <Group
           title="Limits"
           rows={[
-            ["Max borrow LTV, weekdays", fmtPct(m.risk.baseLtvBps, 0)],
-            ["Max borrow LTV, weekends", fmtPct(m.risk.weekendLtvBps, 0)],
-            ["Liquidation LTV", fmtPct(m.risk.liqLtvBps, 0)],
+            ["Max borrow LTV, weekdays", fmtLtv(m.risk.baseLtvBps)],
+            ["Max borrow LTV, weekends", <span key="w" className="text-glow">{fmtLtv(m.weekendLtvBps)}</span>],
+            ["Liquidation LTV", <span key="l" className="text-halt">{fmtLtv(m.risk.liqLtvBps)}</span>],
             ["Minimum Boost cover", fmtPct(t.minJuniorBps, 0)],
           ]}
         />

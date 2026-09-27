@@ -4,7 +4,7 @@ import { useState } from "react";
 import { WeekClock } from "@/components/WeekClock";
 import { GapBars } from "@/components/GapBars";
 import { MARKETS, gapModel } from "@/lib/markets";
-import { fmtPct } from "@/lib/format";
+import { fmtLtv, fmtPct, fmtPremium } from "@/lib/format";
 import type { MarketView } from "@/hooks/useMarket";
 
 type View = "Week" | "Gaps";
@@ -51,10 +51,10 @@ export function MarketChartPanel({ symbol, m, now }: { symbol: string; m?: Marke
             <WeekClock now={now} risk={risk} weekendLtvBps={m?.weekendLtvBps} />
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 px-4 pb-3 text-[11.5px]">
-            <Legend k="Weekday limit" v={fmtPct(risk.baseLtvBps, 0)} />
-            <Legend k="Weekend limit" v={fmtPct(m?.weekendLtvBps ?? risk.weekendLtvBps, 1)} tone="glow" />
-            <Legend k="Liquidation" v={fmtPct(risk.liqLtvBps, 0)} tone="halt" />
-            <Legend k="Liquidation bonus" v={fmtPct(risk.liqBonusBps, 0)} />
+            <Legend k="Weekday limit" v={fmtLtv(risk.baseLtvBps)} />
+            <Legend k="Weekend limit" v={fmtLtv(m?.weekendLtvBps ?? risk.weekendLtvBps)} tone="glow" />
+            <Legend k="Liquidation" v={fmtLtv(risk.liqLtvBps)} tone="halt" />
+            <Legend k="Liquidation bonus" v={fmtLtv(risk.liqBonusBps)} />
           </div>
         </div>
       ) : (
@@ -65,13 +65,19 @@ export function MarketChartPanel({ symbol, m, now }: { symbol: string; m?: Marke
 
       <div className="grid grid-cols-2 gap-px border-t border-line bg-line md:grid-cols-5">
         <Cell label="Gap volatility (σ)" value={fmtPct(model.sigma, 2)} tone="glow" />
-        <Cell label="3σ buffer" value={fmtPct(model.buffer, 1)} />
-        <Cell label="Model weekend limit" value={fmtPct(model.weekendLtv, 1)} tone={binding ? "glow" : "fg"} />
-        <Cell label="Binding" value={binding ? "GapGuard model" : "Configured"} />
+        <Cell label="Safety buffer (3σ, min 5%)" value={fmtPct(model.buffer, 1)} />
+        <Cell
+          label="GapGuard limit"
+          value={fmtLtv(model.weekendLtv)}
+          tone={binding ? "glow" : "muted"}
+          note={binding ? "binding" : "not binding"}
+        />
+        <Cell label="Weekend limit in use" value={fmtLtv(m?.weekendLtvBps ?? configured)} tone="glow" />
         <Cell
           label="Weekend premium"
-          value={m?.premiumPpm !== undefined ? `${(m.premiumPpm / 100).toFixed(1)} bp a weekend` : "-"}
+          value={fmtPremium(m?.premiumPpm)}
           tone={m?.premiumPpm !== undefined ? "glow" : "muted"}
+          className="col-span-2 md:col-span-1"
         />
       </div>
     </section>
@@ -90,11 +96,14 @@ function Legend({ k, v, tone = "fg" }: { k: string; v: string; tone?: Tone }) {
 }
 
 /** Label over a value coloured by meaning: amber weekend, red liquidation, green healthy. */
-function Cell({ label, value, tone = "fg" }: { label: string; value: string; tone?: Tone }) {
+function Cell({ label, value, tone = "fg", note, className = "" }: { label: string; value: string; tone?: Tone; note?: string; className?: string }) {
   return (
-    <div className="bg-ink px-4 py-3">
+    <div className={`bg-ink px-4 py-3 ${className}`}>
       <div className="text-[11px] text-fg-3">{label}</div>
-      <div className={`num mt-1.5 text-[14px] ${TONE[tone]}`}>{value}</div>
+      <div className="mt-1.5 flex items-baseline gap-2">
+        <span className={`num text-[14px] ${TONE[tone]}`}>{value}</span>
+        {note && <span className="text-[11px] text-fg-3">{note}</span>}
+      </div>
     </div>
   );
 }

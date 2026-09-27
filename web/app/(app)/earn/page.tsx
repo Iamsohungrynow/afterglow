@@ -7,14 +7,15 @@ import { AmountCell, Card, Chip, PageHeader, Skel, TokenMark } from "@/component
 import { Segmented } from "@/components/earn/Segmented";
 import { useReadChain } from "@/hooks/useReadChain";
 import { useNow } from "@/hooks/useNow";
-import { boostAprPct, useMarket, type MarketView } from "@/hooks/useMarket";
+import { INDICATIVE_NOTE, boostDisplay, useMarket, vaultCoverBps, vaultEmpty, type MarketView } from "@/hooks/useMarket";
 import { MARKETS, marketsFor } from "@/lib/markets";
-import { fmt, fmtPct } from "@/lib/format";
+import { NO_SCROLLBAR, fmt, fmtPct } from "@/lib/format";
 
 type Filter = "All" | "Protected" | "Boost";
 type Tranche = "protected" | "boost";
 
-const COLS = "grid grid-cols-[minmax(220px,1.6fr)_1fr_1fr_0.8fr_0.9fr_0.9fr] items-center gap-4";
+/** Table columns from `sm` up; below that each vault is a stacked card. */
+const COLS = "hidden sm:grid grid-cols-[minmax(220px,1.6fr)_1fr_1fr_0.8fr_0.9fr_0.9fr] items-center gap-4";
 
 export default function EarnPage() {
   const chainId = useReadChain();
@@ -73,8 +74,8 @@ export default function EarnPage() {
           <Segmented items={["All", "Protected", "Boost"] as Filter[]} value={filter} onChange={setFilter} />
         </div>
 
-        <div className="overflow-x-auto">
-          <div className="min-w-[900px]">
+        <div className={`overflow-x-auto ${NO_SCROLLBAR}`}>
+          <div className="sm:min-w-[900px]">
             <div className={`${COLS} px-5 py-3 text-[12px] text-fg-3`}>
               <span>Vault</span>
               <span>Deposits</span>
@@ -106,7 +107,8 @@ export default function EarnPage() {
       </Card>
 
       <p className="mt-4 text-[12px] text-fg-3">
-        Protected APY is the target rate the vault pays before Boost earns anything. Boost APY is an estimate from the current utilisation and moves with it.
+        Protected APY is the target rate the vault pays before Boost earns anything. Boost APY is an estimate from the current utilisation
+        and moves with it. Figures marked ~ are indicative for a vault with no deposits yet: the pool fully lent, with 25% in Boost.
       </p>
     </div>
   );
@@ -145,12 +147,39 @@ function TrancheRow({ m, tranche }: { m: MarketView; tranche: Tranche }) {
   const t = m.tranches;
   const isP = tranche === "protected";
   const value = isP ? t.seniorValue : t.juniorValue;
-  const boost = boostAprPct(m);
+  const boost = boostDisplay(m);
   const label = isP ? "Protected" : "Boost";
+  const cover = vaultCoverBps(t);
+  const empty = vaultEmpty(t);
+  const href = `/earn/${m.symbol}?t=${tranche}`;
+  const apy = isP ? (
+    <AmountCell main={`${t.seniorAprPct.toFixed(2)}%`} sub="target" />
+  ) : (
+    <AmountCell main={<span className="text-glow">{boost.text}</span>} sub={boost.indicative ? INDICATIVE_NOTE : "estimated"} />
+  );
 
   return (
+    <>
     <Link
-      href={`/earn/${m.symbol}?t=${tranche}`}
+      href={href}
+      className="flex items-center gap-3 border-t border-line px-4 py-4 transition-colors hover:bg-white/[0.02] sm:hidden"
+    >
+      <TokenMark symbol="USDG" size={30} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-[14px] text-fg">
+            {label} {m.symbol}
+          </span>
+          <Chip tone={isP ? "neutral" : "glow"}>{isP ? "Paid first" : "First loss"}</Chip>
+        </div>
+        <div className="num mt-1 text-[12px] text-fg-3">
+          {value === undefined ? "Not deployed here" : `${fmt(value)} USDG deposited`}
+        </div>
+      </div>
+      <div className="shrink-0 text-right">{apy}</div>
+    </Link>
+    <Link
+      href={href}
       className={`${COLS} border-t border-line px-5 py-4 transition-colors hover:bg-white/[0.02]`}
     >
       <div className="flex min-w-0 items-center gap-3">
@@ -175,23 +204,24 @@ function TrancheRow({ m, tranche }: { m: MarketView; tranche: Tranche }) {
 
       <span className="text-[13px] text-fg-2">{isP ? "Paid first" : "First loss"}</span>
 
-      <AmountCell main={fmtPct(t.coverBps)} sub={`min ${fmtPct(t.minJuniorBps, 0)}`} />
+      <AmountCell main={fmtPct(cover)} sub={empty ? "No deposits yet" : `min ${fmtPct(t.minJuniorBps, 0)}`} />
 
-      <div className="text-right">
-        {isP ? (
-          <AmountCell main={`${t.seniorAprPct.toFixed(2)}%`} sub="target" />
-        ) : boost === undefined ? (
-          <span className="text-[13px] text-fg-2">residual</span>
-        ) : (
-          <AmountCell main={<span className="text-glow">{boost.toFixed(2)}%</span>} sub="estimated" />
-        )}
-      </div>
+      <div className="text-right">{apy}</div>
     </Link>
+    </>
   );
 }
 
 function SkeletonRow() {
   return (
+    <>
+    <div className="flex items-center gap-3 border-t border-line px-4 py-4 sm:hidden">
+      <Skel w={30} h={30} />
+      <div className="flex-1">
+        <Skel w={120} h={14} />
+      </div>
+      <Skel w={52} />
+    </div>
     <div className={`${COLS} border-t border-line px-5 py-4`}>
       <div className="flex items-center gap-3">
         <Skel w={30} h={30} />
@@ -205,5 +235,6 @@ function SkeletonRow() {
         <Skel w={52} />
       </div>
     </div>
+    </>
   );
 }

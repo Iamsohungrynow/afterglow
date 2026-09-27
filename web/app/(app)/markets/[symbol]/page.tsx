@@ -15,7 +15,7 @@ import { useNow } from "@/hooks/useNow";
 import { useReadChain } from "@/hooks/useReadChain";
 import { chains } from "@/lib/chains";
 import { MARKETS, marketsFor } from "@/lib/markets";
-import { fmtDate, fmtPct } from "@/lib/format";
+import { fmtDate, fmtLtv, fmtPct } from "@/lib/format";
 
 type Tab = "Market" | "Risk" | "Weekend";
 
@@ -56,7 +56,7 @@ export default function MarketPage() {
     <div className="mx-auto w-full max-w-[1200px] px-4 py-10 md:px-6">
       <BackLink href="/markets">Markets</BackLink>
 
-      <div className="mt-6 grid gap-10 lg:grid-cols-[1fr_400px]">
+      <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-10 lg:grid-cols-[minmax(0,1fr)_400px]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
             <div className="flex items-center gap-3">
@@ -69,7 +69,9 @@ export default function MarketPage() {
               <span className="text-[28px] font-medium tracking-[-0.02em] text-fg-2 md:text-[32px]">USDG</span>
             </div>
             <Chip>
-              <span className="num">Liquidation LTV {m ? fmtPct(m.risk.liqLtvBps) : fmtPct(info.risk.liqLtvBps)}</span>
+              <span className="num">
+                Liquidation LTV <span className="text-halt">{fmtLtv(m ? m.risk.liqLtvBps : info.risk.liqLtvBps)}</span>
+              </span>
             </Chip>
           </div>
 
@@ -116,8 +118,8 @@ export default function MarketPage() {
             <BigStat label="Fixed APR" value={m ? m.aprPct.toFixed(2) : <Skel w={70} h={28} />} unit={m ? "%" : undefined} />
             <BigStat
               label="Borrow limit now"
-              value={m ? (m.maxLtvBps / 100).toFixed(1) : <Skel w={70} h={28} />}
-              unit={m ? "%" : undefined}
+              value={!m ? <Skel w={70} h={28} /> : m.maxLtvBps > 0 ? (m.maxLtvBps / 100).toFixed(1) : <span className="text-fg-3">Paused</span>}
+              unit={m && m.maxLtvBps > 0 ? "%" : undefined}
               sub={m ? `${m.session} session` : undefined}
             />
           </div>
@@ -134,7 +136,7 @@ export default function MarketPage() {
 
         <div className="lg:sticky lg:top-6 lg:self-start">
           <Card className="overflow-hidden">
-            <ActionPanel key={`${chainId}-${symbol}`} m={m} pos={pos} now={now} />
+            <ActionPanel key={`${chainId}-${symbol}`} symbol={symbol} m={m} pos={pos} now={now} />
           </Card>
         </div>
       </div>

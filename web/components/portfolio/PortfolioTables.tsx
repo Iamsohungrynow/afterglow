@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowRight } from "@phosphor-icons/react";
 import { MARKETS } from "@/lib/markets";
-import { daysLeft, fmt, fmtDate, fmtPct } from "@/lib/format";
+import { NO_SCROLLBAR, fmt, fmtDate, fmtDays, fmtPct } from "@/lib/format";
 import { Card, TokenMark } from "@/components/ui/primitives";
 import type { MarketSummary } from "./MarketProbe";
 
@@ -52,7 +52,7 @@ export function CreditLines({ rows, loading, now }: { rows: MarketSummary[]; loa
                 <Td num>{liq !== undefined ? fmt(liq) : "-"}</Td>
                 <Td num>
                   {r.maturity ? fmtDate(r.maturity) : "-"}
-                  {r.maturity && now ? <span className="ml-1.5 text-fg-3">{daysLeft(r.maturity, now).toFixed(0)}d</span> : null}
+                  {r.maturity && now ? <span className="ml-1.5 text-fg-3">{fmtDays(r.maturity, now)}</span> : null}
                 </Td>
                 <Td num>
                   <Manage href="/app" />
@@ -82,7 +82,7 @@ export function Deposits({ rows, loading }: { rows: MarketSummary[]; loading: bo
         r,
         name: "Boost",
         value: r.boostValue,
-        role: <>Residual yield, first loss</>,
+        role: <>Earns the rest, first loss</>,
         href: `/earn/${r.symbol}?t=boost`,
       },
       r.lent > 0 && {
@@ -145,7 +145,7 @@ function Section({ title, count, children }: { title: string; count?: number; ch
 
 function Table({ cols, children }: { cols: Col[]; children: React.ReactNode }) {
   return (
-    <div className="overflow-x-auto">
+    <div className={`overflow-x-auto ${NO_SCROLLBAR}`}>
       <table className="w-full min-w-[860px] text-[13px]">
         <thead>
           <tr className="text-[11.5px] text-fg-3">

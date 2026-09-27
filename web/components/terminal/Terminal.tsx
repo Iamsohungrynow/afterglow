@@ -36,13 +36,18 @@ export function Terminal() {
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:h-[calc(100dvh-8rem)]">
       <MarketBar symbols={symbols} symbol={symbol} onSelect={setSymbol} m={m} now={now} usdgUsd={prices?.USDG?.usd} />
+      {/* Phones stack clock, order panel, then positions; the left column only exists from lg up. */}
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="flex min-h-0 min-w-0 flex-col lg:overflow-y-auto">
-          <MarketChartPanel symbol={symbol} m={m} now={now} />
-          <BottomPanel m={m} pos={pos} connected={isConnected} loading={Boolean(owner) && posLoading} />
+        <div className="contents lg:flex lg:min-h-0 lg:min-w-0 lg:flex-col lg:overflow-y-auto">
+          <div className="order-1 min-w-0 lg:order-none lg:shrink-0">
+            <MarketChartPanel symbol={symbol} m={m} now={now} />
+          </div>
+          <div className="order-3 flex min-w-0 flex-col border-t border-line lg:order-none lg:flex-1 lg:border-t-0">
+            <BottomPanel m={m} pos={pos} connected={isConnected} loading={Boolean(owner) && posLoading} />
+          </div>
         </div>
-        <div className="min-h-0 border-t border-line lg:overflow-y-auto lg:border-l lg:border-t-0">
-          <ActionPanel m={m} pos={pos} now={now} />
+        <div className="order-2 min-h-0 border-line lg:order-none lg:overflow-y-auto lg:border-l">
+          <ActionPanel m={m} pos={pos} now={now} symbol={symbol} />
         </div>
       </div>
     </div>

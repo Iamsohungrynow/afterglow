@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { CaretDown, Check } from "@phosphor-icons/react";
 import { MARKETS } from "@/lib/markets";
-import { fmt, fmtDate, fmtPct, daysLeft } from "@/lib/format";
+import { NO_SCROLLBAR, fmt, fmtDate, fmtDays, fmtLtv, fmtPct, fmtPremium } from "@/lib/format";
 import { fmtDuration, nextTransition } from "@/lib/session";
 import { SessionChip } from "@/components/SessionChip";
 import { Chip, TokenMark } from "@/components/ui/primitives";
@@ -80,7 +80,7 @@ export function MarketBar({
         )}
       </div>
 
-      <div className="flex min-w-0 flex-1 items-center gap-6 overflow-x-auto whitespace-nowrap px-4 [scrollbar-width:none]">
+      <div className={`flex min-w-0 flex-1 items-center gap-6 overflow-x-auto whitespace-nowrap px-4 ${NO_SCROLLBAR}`}>
         <Stat label="Oracle price" loading={!m} value={m && fmt(m.price)} />
         <div className="shrink-0">
           <div className="text-[11px] leading-none text-fg-3">Session</div>
@@ -99,13 +99,13 @@ export function MarketBar({
           value={m && (m.maxLtvBps ? fmtPct(m.maxLtvBps, 1) : "Paused")}
           tone={!m?.maxLtvBps ? "muted" : m.session === "Closing" ? "glow" : "live"}
         />
-        <Stat label="Weekend LTV" loading={!m} value={m && fmtPct(m.weekendLtvBps, 1)} tone="glow" />
+        <Stat label="Weekend LTV" loading={!m} value={m && fmtLtv(m.weekendLtvBps)} tone="glow" />
         <Stat label="Fixed APR" loading={!m} value={m && `${m.aprPct.toFixed(2)}%`} />
-        {m?.premiumPpm !== undefined && <Stat label="Weekend premium" value={`${(m.premiumPpm / 100).toFixed(1)} bp/wk`} tone="glow" />}
+        {m?.premiumPpm !== undefined && <Stat label="Weekend premium" value={fmtPremium(m.premiumPpm)} tone="glow" />}
         <Stat
           label="Maturity"
           loading={!m || !now}
-          value={m && now ? `${fmtDate(m.maturity)}, ${daysLeft(m.maturity, now).toFixed(1)}d` : undefined}
+          value={m && now ? `${fmtDate(m.maturity)}, ${fmtDays(m.maturity, now)} left` : undefined}
         />
         <Stat label="Liquidity" loading={!m} value={live && m?.cash !== undefined ? `${fmt(m.cash, 0)} USDG` : "-"} />
         <Stat label="Utilisation" loading={!m} value={live ? fmtPct(util) : "-"} />

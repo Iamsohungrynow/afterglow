@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/primitives";
 import { Segmented } from "@/components/earn/Segmented";
 import { useAfterglowAccount, type Call } from "@/components/terminal/AccountProvider";
 import { usePosition } from "@/hooks/usePosition";
-import { boostAprPct, type MarketView } from "@/hooks/useMarket";
+import { INDICATIVE_NOTE, boostDisplay, type MarketView } from "@/hooks/useMarket";
 import { erc20Abi, tranchesAbi } from "@/lib/abi";
 import { explorerTx } from "@/lib/chains";
 import { fmt, fmtPct } from "@/lib/format";
@@ -44,9 +44,11 @@ export function TrancheActionCard({ m, tranche, chainId }: { m?: MarketView; tra
     const d = valid ? amt : 0;
     const ns = isP ? s + (mode === "Deposit" ? d : -d) : s;
     const nj = isP ? j : j + (mode === "Deposit" ? d : -d);
-    coverAfter = ns + nj > 0 ? (Math.max(nj, 0) / (ns + nj)) * 10_000 : 10_000;
+    // An empty vault has no cover to speak of; show "-" rather than the contract's 100%.
+    coverAfter = ns + nj > 0 ? (Math.max(nj, 0) / (ns + nj)) * 10_000 : undefined;
   }
-  const apy = isP ? t?.seniorAprPct : m ? boostAprPct(m) : undefined;
+  const boost = m ? boostDisplay(m) : undefined;
+  const apyText = isP ? (t ? `${t.seniorAprPct.toFixed(2)}%` : "-") : (boost?.text ?? "-");
 
   let blocked: string | undefined;
   if (valid && balance !== undefined && amt > balance + 1e-9) blocked = mode === "Deposit" ? "Not enough USDG" : "More than your balance";
@@ -136,8 +138,8 @@ export function TrancheActionCard({ m, tranche, chainId }: { m?: MarketView; tra
   }
 
   return (
-    <Card className="p-5">
-      <div className="flex items-center justify-between gap-3">
+    <Card className="min-w-0 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-[15px] text-fg">
           {name} {m?.symbol}
         </h2>
@@ -153,7 +155,7 @@ export function TrancheActionCard({ m, tranche, chainId }: { m?: MarketView; tra
       </div>
 
       <div className="mt-5">
-        <div className="flex items-baseline justify-between">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <label htmlFor="tranche-amount" className="text-[12.5px] text-fg-2">
             {mode === "Deposit" ? "Amount to deposit" : "Amount to withdraw"}
           </label>
@@ -175,12 +177,12 @@ export function TrancheActionCard({ m, tranche, chainId }: { m?: MarketView; tra
             }}
             className="num min-w-0 flex-1 bg-transparent text-[18px] text-fg placeholder:text-fg-3 outline-none"
           />
-          <span className="text-[12.5px] text-fg-3">USDG</span>
+          <span className="shrink-0 text-[12.5px] text-fg-3">USDG</span>
           <button
             type="button"
             disabled={!balance}
             onClick={() => balance && setAmount((Math.floor(balance * 1e6) / 1e6).toString())}
-            className="rounded-[6px] border border-line-strong px-2 py-1 text-[11px] text-fg-2 transition hover:text-fg disabled:opacity-40"
+            className="shrink-0 rounded-[6px] border border-line-strong px-2 py-1 text-[11px] text-fg-2 transition hover:text-fg disabled:opacity-40"
           >
             MAX
           </button>
@@ -188,12 +190,16 @@ export function TrancheActionCard({ m, tranche, chainId }: { m?: MarketView; tra
       </div>
 
       <dl className="mt-5 grid gap-2.5 text-[12.5px]">
-        <Row k={isP ? "Target APY" : "Estimated APY"} v={apy === undefined ? (isP ? "-" : "residual") : `${apy.toFixed(2)}%`} />
+        <Row
+          k={isP ? "Target APY" : boost?.indicative ? `Indicative APY, ${INDICATIVE_NOTE}` : "Estimated APY"}
+          v={apyText}
+          tone={isP ? undefined : "text-glow"}
+        />
         <Row k="Role" v={isP ? "Paid first" : "First loss"} />
         <Row k="Your position" v={trancheBal === undefined ? "-" : `${fmt(trancheBal)} USDG`} />
         <Row k="Vault cover after" v={coverAfter === undefined ? "-" : fmtPct(coverAfter)} />
         {mode === "Withdraw" && <Row k="Idle USDG in pool" v={m?.cash === undefined ? "-" : fmt(m.cash)} />}
-        {mode === "Deposit" && <Row k="Transactions" v={acct.gasless ? "1 (approve and deposit batched)" : "2 (approve, then deposit)"} />}
+        {mode === "Deposit" && <Row k="Transactions" v={acct.gasless ? "1, approve and deposit batched" : "2, approve then deposit"} />}
       </dl>
 
       <div className="mt-5">
@@ -227,11 +233,11 @@ export function TrancheActionCard({ m, tranche, chainId }: { m?: MarketView; tra
   );
 }
 
-function Row({ k, v }: { k: string; v: string }) {
+function Row({ k, v, tone = "text-fg-2" }: { k: string; v: string; tone?: string }) {
   return (
     <div className="flex justify-between gap-3">
-      <dt className="text-fg-3">{k}</dt>
-      <dd className="num text-right text-fg-2">{v}</dd>
+      <dt className="min-w-0 text-fg-3">{k}</dt>
+      <dd className={`num min-w-0 text-right ${tone}`}>{v}</dd>
     </div>
   );
 }

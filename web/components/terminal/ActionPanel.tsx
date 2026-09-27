@@ -8,23 +8,25 @@ import { encodeFunctionData, maxUint256, parseUnits } from "viem";
 import { ArrowSquareOut, CheckSquare, Lightning, Square } from "@phosphor-icons/react";
 import { erc20Abi, marketAbi, tranchesAbi } from "@/lib/abi";
 import { explorerTx } from "@/lib/chains";
-import { daysLeft, fmt, fmtPct } from "@/lib/format";
+import { fmt, fmtDays, fmtLtv, fmtPct, fmtPremium } from "@/lib/format";
 import { fmtDuration, nextTransition } from "@/lib/session";
-import { boostAprPct, premiumFor, type MarketView } from "@/hooks/useMarket";
+import { INDICATIVE_NOTE, boostDisplay, premiumFor, vaultCoverBps, type MarketView } from "@/hooks/useMarket";
 import type { PositionView } from "@/hooks/usePosition";
 import { useAfterglowAccount, type Call } from "./AccountProvider";
 
 type Tab = "Borrow" | "Repay" | "Lend";
 
 /** Order panel: rate and term chips, Borrow / Repay / Lend, then the form for the chosen tab. */
-export function ActionPanel({ m, pos, now }: { m?: MarketView; pos?: PositionView; now?: number }) {
+export function ActionPanel({ m, pos, now, symbol }: { m?: MarketView; pos?: PositionView; now?: number; symbol?: string }) {
   const [tab, setTab] = useState<Tab>("Borrow");
-  const term = m && now ? Math.round(daysLeft(m.maturity, now)) : undefined;
+  const term = m && now ? fmtDays(m.maturity, now) : undefined;
+  // Label collateral fields before market data arrives, so they never read "Add collateral ()".
+  const sym = m?.symbol ?? symbol ?? "stock";
   return (
     <aside className="flex flex-col gap-3 p-3">
       <div className="grid grid-cols-2 gap-2">
         <InfoChip label="Fixed" value={m ? `${m.aprPct.toFixed(2)}%` : undefined} />
-        <InfoChip label="Term" value={term !== undefined ? `${term}d` : undefined} />
+        <InfoChip label="Term" value={term} />
       </div>
 
       <div className="grid grid-cols-3 gap-1 rounded-[8px] border border-line bg-ink-2 p-1">
@@ -43,8 +45,8 @@ export function ActionPanel({ m, pos, now }: { m?: MarketView; pos?: PositionVie
       </div>
 
       <div className="flex flex-col pt-1">
-        {tab === "Borrow" && <BorrowForm m={m} pos={pos} now={now} />}
-        {tab === "Repay" && <RepayForm m={m} pos={pos} />}
+        {tab === "Borrow" && <BorrowForm m={m} pos={pos} now={now} sym={sym} />}
+        {tab === "Repay" && <RepayForm m={m} pos={pos} sym={sym} />}
         {tab === "Lend" && <LendForm m={m} pos={pos} />}
       </div>
     </aside>
@@ -62,7 +64,7 @@ function InfoChip({ label, value }: { label: string; value?: string }) {
 
 // ---------------------------------------------------------------------------
 
-function BorrowForm({ m, pos, now }: { m?: MarketView; pos?: PositionView; now?: number }) {
+function BorrowForm({ m, pos, now, sym }: { m?: MarketView; pos?: PositionView; now?: number; sym: string }) {
   const [coll, setColl] = useState("");
   const [amount, setAmount] = useState("");
   const addColl = Number(coll) || 0;
@@ -103,7 +105,7 @@ function BorrowForm({ m, pos, now }: { m?: MarketView; pos?: PositionView; now?:
   if (!open && add > 0) blocked = next ? `Borrowing opens in ${fmtDuration(next.in)}` : "Market closed";
   else if (over) blocked = "Above borrow limit";
   else if (addColl <= 0 && add <= 0) blocked = "Enter an amount";
-  else if (pos && addColl > pos.wallet.token) blocked = `Not enough ${m?.symbol}`;
+  else if (pos && addColl > pos.wallet.token) blocked = `Not enough ${sym}`;
 
   // Slider: target loan-to-value on the (existing + added) collateral, capped at today's limit.
   const setLtv = (bps: number) => {
@@ -116,7 +118,7 @@ function BorrowForm({ m, pos, now }: { m?: MarketView; pos?: PositionView; now?:
   return (
     <div className="flex flex-col gap-4">
       <Field
-        label={`Add collateral (${m?.symbol ?? ""})`}
+        label={`Add collateral (${sym})`}
         value={coll}
         onChange={setColl}
         hint={pos ? `Wallet ${fmt(pos.wallet.token, 4)}` : undefined}
@@ -134,13 +136,13 @@ function BorrowForm({ m, pos, now }: { m?: MarketView; pos?: PositionView; now?:
       </div>
 
       <div className="grid gap-2">
-        <CheckRow on={!overWeekend} label={overWeekend ? "Above the weekend limit" : "Within the weekend limit"} value={m ? fmtPct(m.weekendLtvBps) : undefined} />
+        <CheckRow on={!overWeekend} label={overWeekend ? "Above the weekend limit" : "Within the weekend limit"} value={m ? fmtLtv(m.weekendLtvBps) : undefined} />
         <CheckRow on label="Fixed rate, locked to maturity" value={m ? `${m.aprPct.toFixed(2)}%` : undefined} />
       </div>
 
       {overWeekend && (
         <p className="border-l border-glow/60 pl-3 text-[12px] leading-relaxed text-fg-2">
-          This loan sits above the {fmtPct(m?.weekendLtvBps)} weekend limit. It stays safe, but collateral can only be withdrawn over
+          This loan sits above the {fmtLtv(m?.weekendLtvBps)} weekend limit. It stays safe, but collateral can only be withdrawn over
           the weekend once you are back under it.
         </p>
       )}
@@ -151,14 +153,14 @@ function BorrowForm({ m, pos, now }: { m?: MarketView; pos?: PositionView; now?:
         <Row k="Collateral value" v={calc ? `${fmt(calc.value)} USDG` : "-"} />
         {m?.premiumPpm !== undefined && (
           <Row
-            k={`Weekend premium, ${m.weekends ?? 0} weekend${m.weekends === 1 ? "" : "s"} × ${(m.premiumPpm / 100).toFixed(1)} bp`}
+            k={`Weekend premium, ${m.weekends ?? 0} × ${fmtPremium(m.premiumPpm)}`}
             v={calc && add > 0 ? `${fmt(calc.premium)} USDG` : "-"}
           />
         )}
         {m?.premiumPpm !== undefined && <Row k="You receive" v={calc && add > 0 ? `${fmt(add - calc.premium)} USDG` : "-"} />}
         <Row k="Owed at maturity" v={calc ? `${fmt(calc.owed)} USDG` : "-"} strong />
         <Row k="Liquidation price" v={calc?.liqPrice ? `${fmt(calc.liqPrice)} USDG` : "-"} />
-        <Row k="Weekend LTV" v={m ? fmtPct(m.weekendLtvBps) : "-"} />
+        <Row k="Weekend LTV" v={m ? fmtLtv(m.weekendLtvBps) : "-"} tone="text-glow" />
       </Summary>
 
       {m && <SessionNote m={m} now={now} />}
@@ -170,8 +172,8 @@ function BorrowForm({ m, pos, now }: { m?: MarketView; pos?: PositionView; now?:
 function SessionNote({ m, now }: { m: MarketView; now?: number }) {
   const next = now ? nextTransition(now) : undefined;
   const text: Record<MarketView["session"], string> = {
-    Live: `Market open. In the final four hours before Friday's close the borrow limit glides from ${fmtPct(m.risk.baseLtvBps, 0)} to ${fmtPct(m.weekendLtvBps)}.`,
-    Closing: `The weekly close is near. The borrow limit is gliding down to ${fmtPct(m.weekendLtvBps)} so nobody enters the weekend at the edge.`,
+    Live: `Market open. In the final four hours before Friday's close the borrow limit glides from ${fmtLtv(m.risk.baseLtvBps)} to ${fmtLtv(m.weekendLtvBps)}.`,
+    Closing: `The weekly close is near. The borrow limit is gliding down to ${fmtLtv(m.weekendLtvBps)} so nobody enters the weekend at the edge.`,
     Closed: "Market closed. Repaying and adding collateral still work. Borrowing and liquidations resume after the first new price.",
     Halted: "Pricing is paused (corporate action, sequencer or USDG peg). Only repaying and adding collateral are available.",
   };
@@ -186,7 +188,7 @@ function SessionNote({ m, now }: { m: MarketView; now?: number }) {
   );
 }
 
-function RepayForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
+function RepayForm({ m, pos, sym }: { m?: MarketView; pos?: PositionView; sym: string }) {
   const [amount, setAmount] = useState("");
   const [withdraw, setWithdraw] = useState("");
   const pay = Number(amount) || 0;
@@ -217,7 +219,7 @@ function RepayForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
   return (
     <div className="flex flex-col gap-4">
       <Field label="Repay (USDG)" value={amount} onChange={setAmount} hint={pos ? `Wallet ${fmt(pos.wallet.usdg)}` : undefined} onMax={pos ? () => setAmount(pos.debtNow.toFixed(6)) : undefined} />
-      <Field label={`Withdraw collateral (${m?.symbol ?? ""})`} value={withdraw} onChange={setWithdraw} onMax={pos ? () => setWithdraw(String(pos.collateral)) : undefined} />
+      <Field label={`Withdraw collateral (${sym})`} value={withdraw} onChange={setWithdraw} onMax={pos ? () => setWithdraw(String(pos.collateral)) : undefined} />
 
       <div className="grid gap-2">
         <CheckRow on label="Repay any time, also on weekends" />
@@ -229,7 +231,7 @@ function RepayForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
       <Summary>
         <Row k="Debt today" v={pos ? `${fmt(pos.debtNow)} USDG` : "-"} strong />
         <Row k="Owed at maturity" v={pos ? `${fmt(pos.face)} USDG` : "-"} />
-        <Row k="Collateral" v={pos ? `${fmt(pos.collateral, 4)} ${m?.symbol ?? ""}` : "-"} />
+        <Row k="Collateral" v={pos ? `${fmt(pos.collateral, 4)} ${sym}` : "-"} />
       </Summary>
       <p className="text-[12px] leading-relaxed text-fg-3">Repaying early costs today&apos;s discounted value. Repay is never paused, even on weekends.</p>
     </div>
@@ -243,7 +245,7 @@ function LendForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
   const v = Number(amount) || 0;
   const t = m?.tranches;
   const isSenior = tranche === "Protected";
-  const boost = m ? boostAprPct(m) : undefined;
+  const boost = m ? boostDisplay(m) : undefined;
   const held = pos ? (isSenior ? pos.protectedValue : pos.boostValue) : undefined;
 
   const calls = (owner: `0x${string}`): Call[] => {
@@ -268,7 +270,7 @@ function LendForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
       <div className="grid grid-cols-2 gap-2">
         {(["Protected", "Boost"] as const).map((x) => {
           const on = tranche === x;
-          const apr = x === "Protected" ? t?.seniorAprPct : boost;
+          const apr = x === "Protected" ? (t ? `${t.seniorAprPct.toFixed(2)}%` : undefined) : boost?.text;
           return (
             <button
               key={x}
@@ -278,9 +280,11 @@ function LendForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
             >
               <div className={`text-[12.5px] ${on ? "text-fg" : "text-fg-2"}`}>{x}</div>
               <div className={`num mt-1 text-[16px] ${on ? (x === "Boost" ? "text-glow" : "text-fg") : "text-fg-3"}`}>
-                {apr !== undefined ? `${apr.toFixed(2)}%` : x === "Boost" ? "residual" : "-"}
+                {apr ?? "-"}
               </div>
-              <div className="mt-1 text-[11px] text-fg-3">{x === "Protected" ? "Paid first, fixed target" : "Earns the rest, first loss"}</div>
+              <div className="mt-1 text-[11px] text-fg-3">
+                {x === "Protected" ? "Paid first, fixed target" : boost?.indicative ? `Indicative, ${INDICATIVE_NOTE}` : "Earns the rest, first loss"}
+              </div>
             </button>
           );
         })}
@@ -311,7 +315,8 @@ function LendForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
 /** Where lender yield comes from, and in which order money flows. */
 function YieldSource({ m }: { m?: MarketView }) {
   const t = m?.tranches;
-  const cover = t?.coverBps;
+  const cover = t ? vaultCoverBps(t) : undefined;
+  const empty = t !== undefined && t.coverBps !== undefined && cover === undefined;
   return (
     <div className="border-t border-line pt-3">
       <div className="text-[11px] text-fg-3">Where the yield comes from</div>
@@ -321,7 +326,7 @@ function YieldSource({ m }: { m?: MarketView }) {
           over-collateralised {m?.symbol ?? "stock"} tokens
           {m?.premiumPpm !== undefined && (
             <>
-              , plus a weekend premium of <span className="num text-fg">{(m.premiumPpm / 100).toFixed(1)} bp</span> a weekend, priced by GapGuard from{" "}
+              , plus a weekend premium of <span className="num text-fg">{fmtPremium(m.premiumPpm)}</span>, priced by GapGuard from{" "}
               {m.symbol}&apos;s real weekend moves
             </>
           )}
@@ -337,7 +342,7 @@ function YieldSource({ m }: { m?: MarketView }) {
       </ol>
       <div className="mt-3 flex justify-between text-[11.5px] text-fg-3">
         <span>Boost cover (min {t ? (t.minJuniorBps / 100).toFixed(0) : 20}%)</span>
-        <span className="num text-fg-2">{cover !== undefined ? `${(cover / 100).toFixed(1)}%` : "-"}</span>
+        <span className="num text-fg-2">{cover !== undefined ? `${(cover / 100).toFixed(1)}%` : empty ? "No deposits yet" : "-"}</span>
       </div>
     </div>
   );
@@ -358,10 +363,14 @@ function LtvSlider({ m, ltv, disabled, onChange }: { m: MarketView; ltv: number;
     <div>
       <div className="flex items-baseline justify-between text-[12px]">
         <span className="text-fg-3">Loan to value</span>
-        <span className="num">
-          <span className={over ? "text-halt" : "text-fg"}>{Number.isFinite(ltv) ? fmtPct(ltv) : "-"}</span>
-          <span className="text-fg-3"> / {fmtPct(max)} now</span>
-        </span>
+        {max > 0 ? (
+          <span className="num">
+            <span className={over ? "text-halt" : "text-fg"}>{Number.isFinite(ltv) ? fmtPct(ltv) : "-"}</span>
+            <span className="text-fg-3"> / {fmtLtv(max)} now</span>
+          </span>
+        ) : (
+          <span className="text-fg-3">Borrowing paused</span>
+        )}
       </div>
       <div className="relative mt-2.5">
         <input
@@ -388,10 +397,10 @@ function LtvSlider({ m, ltv, disabled, onChange }: { m: MarketView; ltv: number;
         <span className="num absolute left-0">0%</span>
         {max > 0 && weekendAt < 88 && weekendAt > 12 && (
           <span className="num absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${weekendAt}%` }}>
-            weekend {fmtPct(m.weekendLtvBps, 0)}
+            weekend {fmtLtv(m.weekendLtvBps)}
           </span>
         )}
-        <span className="num absolute right-0">{max > 0 ? fmtPct(max, 0) : "paused"}</span>
+        <span className="num absolute right-0">{max > 0 ? fmtLtv(max) : "Paused"}</span>
       </div>
     </div>
   );
@@ -439,11 +448,11 @@ function Summary({ children }: { children: React.ReactNode }) {
   return <dl className="grid gap-2 border-t border-line pt-3 text-[12px]">{children}</dl>;
 }
 
-function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
+function Row({ k, v, strong, tone }: { k: string; v: string; strong?: boolean; tone?: string }) {
   return (
     <div className="flex justify-between gap-3">
       <dt className="text-fg-3">{k}</dt>
-      <dd className={`num text-right ${strong ? "text-fg" : "text-fg-2"}`}>{v}</dd>
+      <dd className={`num text-right ${tone ?? (strong ? "text-fg" : "text-fg-2")}`}>{v}</dd>
     </div>
   );
 }

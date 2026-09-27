@@ -1,4 +1,4 @@
-import { daysLeft, fmt } from "@/lib/format";
+import { daysLeft, fmt, fmtDays } from "@/lib/format";
 
 /** Short amount for tables and stats: 12,345.67 below 10K, then 12.35K / 1.23M / 1.23B. */
 export function splitCompact(n: number | undefined): { value: string; suffix: string } {
@@ -18,8 +18,7 @@ export function compact(n: number | undefined) {
 export function maturityLeft(maturity: number, now: number | undefined) {
   if (now === undefined) return undefined;
   const d = daysLeft(maturity, now);
-  if (d >= 1) return `${Math.floor(d)}d left`;
-  if (d > 0) return "Under 1d left";
+  if (d > 0) return `${fmtDays(maturity, now)} left`;
   return "Matured";
 }
 

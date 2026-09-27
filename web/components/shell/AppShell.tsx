@@ -10,6 +10,7 @@ import { useLivePrices } from "@/hooks/useLivePrices";
 import { useReadChain } from "@/hooks/useReadChain";
 import { chains } from "@/lib/chains";
 import { MARKETS } from "@/lib/markets";
+import { NO_SCROLLBAR } from "@/lib/format";
 import { fmtDuration, nextTransition, scheduleSession } from "@/lib/session";
 import { useAfterglowAccount } from "@/components/terminal/AccountProvider";
 import { ConnectButton, NetworkSelect } from "./WalletControls";
@@ -77,7 +78,7 @@ function TickerStrip() {
   const state = now ? scheduleSession(now) : undefined;
   const next = now ? nextTransition(now) : undefined;
   return (
-    <div className="mt-10 flex h-8 items-center gap-6 overflow-x-auto border-b border-line px-4 text-[11.5px] md:mt-0 md:px-5">
+    <div className={`mt-10 flex h-8 items-center gap-6 overflow-x-auto border-b border-line px-4 text-[11.5px] md:mt-0 md:px-5 ${NO_SCROLLBAR}`}>
       <div className="flex shrink-0 items-center gap-2">
         {state && <SessionChip session={state.session} />}
         {next && (
@@ -109,17 +110,17 @@ function StatusFooter() {
   const chain = chains.find((c) => c.id === readChain);
   const utc = now ? new Date(now * 1000).toISOString().slice(11, 19) : "--:--:--";
   return (
-    <footer className="flex h-8 items-center justify-between gap-4 overflow-x-auto border-t border-line px-4 text-[11px] text-fg-3 md:px-5">
-      <div className="flex shrink-0 items-center gap-4">
-        <span className="flex items-center gap-1.5">
-          <span className="size-1.5 rounded-full bg-live" />
-          {chain?.name ?? "No network"}
+    <footer className={`flex h-8 items-center justify-between gap-3 overflow-x-auto border-t border-line px-4 text-[11px] text-fg-3 md:px-5 ${NO_SCROLLBAR}`}>
+      <div className="flex min-w-0 items-center gap-4">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="size-1.5 shrink-0 rounded-full bg-live" />
+          <span className="truncate">{chain?.name ?? "No network"}</span>
         </span>
-        <span className="num">UTC {utc}</span>
-        {block !== undefined && <span className="num">#{block.toString()}</span>}
-        {gasless && <span className="text-glow">Gas sponsored by ZeroDev</span>}
+        <span className="num hidden shrink-0 sm:inline">UTC {utc}</span>
+        {block !== undefined && <span className="num hidden shrink-0 sm:inline">#{block.toString()}</span>}
+        {gasless && <span className="hidden shrink-0 text-glow md:inline">Gas sponsored by ZeroDev</span>}
       </div>
-      <span className="flex shrink-0 items-center gap-4">
+      <span className="flex shrink-0 items-center gap-3 sm:gap-4">
         <Link href="/docs" className="transition-colors hover:text-fg-2">
           Docs
         </Link>

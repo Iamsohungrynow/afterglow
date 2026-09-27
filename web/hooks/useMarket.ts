@@ -72,6 +72,36 @@ export function boostAprPct(m: MarketView): number | undefined {
   return ((income - t.seniorValue * (t.seniorAprPct / 100)) / t.juniorValue) * 100;
 }
 
+/** Boost share of the vault assumed for the indicative Boost APY while the vault has no deposits. */
+export const INDICATIVE_BOOST_MIX = 0.25;
+
+/**
+ * Boost APY to show. With deposits it is the live estimate (boostAprPct). Without, it is indicative:
+ * the pool fully lent at the fixed rate plus the weekend premium, Protected paid its target on 75%,
+ * and the rest over a 25% Boost share.
+ */
+export function boostDisplay(m: MarketView): { pct: number; indicative: boolean; text: string } {
+  const live = boostAprPct(m);
+  if (live !== undefined) return { pct: live, indicative: false, text: `${live.toFixed(2)}%` };
+  const pool = m.aprPct + (m.premiumPpm ? premiumAprPct(m.premiumPpm) : 0);
+  const pct = (pool - (1 - INDICATIVE_BOOST_MIX) * m.tranches.seniorAprPct) / INDICATIVE_BOOST_MIX;
+  return { pct, indicative: true, text: `~${pct.toFixed(0)}%` };
+}
+
+/** Sub-label for an indicative Boost APY. */
+export const INDICATIVE_NOTE = "if fully lent";
+
+/** Boost share of the vault in bps, or undefined while the vault holds no deposits (the contract reports 100%). */
+export function vaultCoverBps(t: TrancheView): number | undefined {
+  if (t.coverBps === undefined) return undefined;
+  if ((t.seniorValue ?? 0) + (t.juniorValue ?? 0) <= 0) return undefined;
+  return t.coverBps;
+}
+
+/** True once the tranche values are known and the vault is empty. */
+export const vaultEmpty = (t: TrancheView) =>
+  t.seniorValue !== undefined && t.juniorValue !== undefined && t.seniorValue + t.juniorValue <= 0;
+
 /** First Thursday 20:00 UTC at or after t (matches the deploy script). */
 function previewMaturity(now: number) {
   const t = now + 28 * 86400;
