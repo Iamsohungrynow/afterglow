@@ -22,6 +22,18 @@ export const oracleAbi = parseAbi([
   "function isMarketClosed() view returns (bool)",
 ]);
 
+export const tranchesAbi = parseAbi([
+  "function trancheValues() view returns (uint256 seniorValue, uint256 juniorValue)",
+  "function balancesOf(address) view returns (uint256 seniorAssets, uint256 juniorAssets)",
+  "function juniorCoverBps() view returns (uint256)",
+  "function seniorRateWad() view returns (uint256)",
+  "function minJuniorBps() view returns (uint16)",
+  "function depositSenior(uint256 assets, address receiver) returns (uint256)",
+  "function withdrawSenior(uint256 assets, address receiver) returns (uint256)",
+  "function depositJunior(uint256 assets, address receiver) returns (uint256)",
+  "function withdrawJunior(uint256 assets, address receiver) returns (uint256)",
+]);
+
 export const marketAbi = parseAbi([
   "function marketStatus() view returns (uint8 session, uint256 price, uint256 maxLtvBps, uint256 discount)",
   "function positions(address) view returns (uint256 collateral, uint256 face)",

@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
 import type { Address } from "viem";
-import { erc20Abi, marketAbi } from "@/lib/abi";
+import { erc20Abi, marketAbi, tranchesAbi } from "@/lib/abi";
 import type { MarketView } from "./useMarket";
 
 export interface PositionView {
@@ -13,6 +13,8 @@ export interface PositionView {
   shares: bigint;
   lent: number; // USDG value of lender shares
   withdrawable: number;
+  protectedValue: number; // USDG value in the Protected tranche
+  boostValue: number; // USDG value in the Boost tranche
   wallet: { token: number; usdg: number };
 }
 
@@ -39,7 +41,21 @@ export function usePosition(market: MarketView | undefined, chainId: number | un
       const lent = shares > 0n
         ? ((await client!.readContract({ address: m, abi: marketAbi, functionName: "convertToAssets", args: [shares] })) as bigint)
         : 0n;
+      let protectedValue = 0;
+      let boostValue = 0;
+      if (market!.tranches.address) {
+        const [s, j] = (await client!.readContract({
+          address: market!.tranches.address,
+          abi: tranchesAbi,
+          functionName: "balancesOf",
+          args: [owner!],
+        })) as readonly [bigint, bigint];
+        protectedValue = Number(s) / 1e6;
+        boostValue = Number(j) / 1e6;
+      }
       return {
+        protectedValue,
+        boostValue,
         collateral: Number(pos[0]) / 1e18,
         face: Number(pos[1]) / 1e6,
         debtNow: Number(debt) / 1e6,

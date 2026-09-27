@@ -10,7 +10,7 @@ type Tab = "Borrowing" | "Lending";
 export function BottomPanel({ m, pos, connected }: { m?: MarketView; pos?: PositionView; connected: boolean }) {
   const [tab, setTab] = useState<Tab>("Borrowing");
   const hasBorrow = pos && (pos.collateral > 0 || pos.face > 0);
-  const hasLend = pos && pos.lent > 0;
+  const hasLend = pos && (pos.lent > 0 || pos.protectedValue > 0 || pos.boostValue > 0);
   const ltv = pos && m && pos.collateral > 0 ? (pos.debtNow / (pos.collateral * m.price)) * 10_000 : undefined;
 
   const empty = !connected
@@ -35,7 +35,7 @@ export function BottomPanel({ m, pos, connected }: { m?: MarketView; pos?: Posit
       {tab === "Borrowing" && hasBorrow && m ? (
         <Table
           head={["Market", "Collateral", "Value", "Debt today", "Owed at maturity", "LTV", "Liq. price", "Maturity"]}
-          row={[
+          rows={[[
             `${m.symbol} / USDG`,
             `${fmt(pos!.collateral, 4)} ${m.symbol}`,
             `${fmt(pos!.collateral * m.price)}`,
@@ -44,12 +44,16 @@ export function BottomPanel({ m, pos, connected }: { m?: MarketView; pos?: Posit
             fmtPct(ltv),
             pos!.collateral > 0 ? fmt(pos!.debtNow / (pos!.collateral * (m.risk.liqLtvBps / 10_000))) : "-",
             fmtDate(m.maturity),
-          ]}
+          ]]}
         />
       ) : tab === "Lending" && hasLend && m ? (
         <Table
-          head={["Market", "Deposit value", "Withdrawable now", "Fixed rate", "Maturity"]}
-          row={[`${m.symbol} / USDG`, `${fmt(pos!.lent)} USDG`, `${fmt(pos!.withdrawable)} USDG`, `${m.aprPct.toFixed(2)}%`, fmtDate(m.maturity)]}
+          head={["Market", "Tranche", "Value", "Target / role", "Maturity"]}
+          rows={[
+            pos!.protectedValue > 0 && [`${m.symbol} / USDG`, "Protected", `${fmt(pos!.protectedValue)} USDG`, `${m.tranches.seniorAprPct.toFixed(2)}%, paid first`, fmtDate(m.maturity)],
+            pos!.boostValue > 0 && [`${m.symbol} / USDG`, "Boost", `${fmt(pos!.boostValue)} USDG`, "Residual, first loss", fmtDate(m.maturity)],
+            pos!.lent > 0 && [`${m.symbol} / USDG`, "Pool", `${fmt(pos!.lent)} USDG`, `${m.aprPct.toFixed(2)}% x utilisation`, fmtDate(m.maturity)],
+          ].filter((r): r is string[] => Array.isArray(r))}
         />
       ) : (
         <div className="flex flex-1 items-center justify-center px-6 py-8 text-[12.5px] text-fg-3">{empty}</div>
@@ -58,7 +62,7 @@ export function BottomPanel({ m, pos, connected }: { m?: MarketView; pos?: Posit
   );
 }
 
-function Table({ head, row }: { head: string[]; row: string[] }) {
+function Table({ head, rows }: { head: string[]; rows: string[][] }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[720px] text-left text-[12.5px]">
@@ -72,13 +76,15 @@ function Table({ head, row }: { head: string[]; row: string[] }) {
           </tr>
         </thead>
         <tbody>
-          <tr className="border-t border-line">
-            {row.map((c, i) => (
-              <td key={i} className={`px-4 py-3 ${i ? "num" : ""} text-fg`}>
-                {c}
-              </td>
-            ))}
-          </tr>
+          {rows.map((row, r) => (
+            <tr key={r} className="border-t border-line">
+              {row.map((c, i) => (
+                <td key={i} className={`px-4 py-3 ${i > 1 ? "num" : ""} text-fg`}>
+                  {c}
+                </td>
+              ))}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

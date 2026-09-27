@@ -11,6 +11,8 @@ import {AggregatorV3Interface} from "../src/interfaces/AggregatorV3Interface.sol
 import {IGapGuard} from "../src/interfaces/IGapGuard.sol";
 import {DemoPriceFeed} from "../src/demo/DemoPriceFeed.sol";
 import {DemoStockToken} from "../src/demo/DemoStockToken.sol";
+import {AfterglowTranches} from "../src/AfterglowTranches.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 
 /// @notice Deploys Phaselock plus one Afterglow market per collateral.
 ///
@@ -56,6 +58,9 @@ contract Deploy is Script {
         address token;
         address feed;
         address market;
+        address tranches;
+        address protectedToken;
+        address boostToken;
     }
 
     function run() external returns (PhaselockOracle oracle, Deployed[] memory out) {
@@ -120,7 +125,13 @@ contract Deploy is Script {
             })
         );
         if (p.gapGuard != address(0)) market.setGapGuard(IGapGuard(p.gapGuard));
-        d = Deployed(a.symbol, a.token, feed, address(market));
+        // Protected / Boost tranches on top of the market: senior targets 5/8 of the market rate,
+        // junior must stay at least 20% of the tranche vault.
+        AfterglowTranches tranches =
+            new AfterglowTranches(IERC4626(address(market)), p.rateWad * 5 / 8, 2000, p.deployer, tag);
+        d = Deployed(
+            a.symbol, a.token, feed, address(market), address(tranches), address(tranches.senior()), address(tranches.junior())
+        );
     }
 
     // ---------------------------------------------------------------------
@@ -206,6 +217,7 @@ contract Deploy is Script {
         for (uint256 i; i < out.length; ++i) {
             console.log(string.concat(out[i].symbol, " market:"), out[i].market);
             console.log(string.concat(out[i].symbol, " feed:  "), out[i].feed);
+            console.log(string.concat(out[i].symbol, " tranches:"), out[i].tranches);
         }
     }
 
@@ -223,7 +235,10 @@ contract Deploy is Script {
             string memory key = out[i].symbol;
             vm.serializeAddress(key, "token", out[i].token);
             vm.serializeAddress(key, "feed", out[i].feed);
-            string memory entry = vm.serializeAddress(key, "market", out[i].market);
+            vm.serializeAddress(key, "market", out[i].market);
+            vm.serializeAddress(key, "protectedToken", out[i].protectedToken);
+            vm.serializeAddress(key, "boostToken", out[i].boostToken);
+            string memory entry = vm.serializeAddress(key, "tranches", out[i].tranches);
             marketsJson = vm.serializeString(markets, key, entry);
         }
         vm.serializeString(root, "markets", marketsJson);

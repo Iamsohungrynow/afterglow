@@ -78,7 +78,10 @@ export interface Deployment {
   gapGuard: Address;
   oracle: Address;
   maturity: number;
-  markets: Record<string, { token: Address; feed: Address; market: Address }>;
+  markets: Record<
+    string,
+    { token: Address; feed: Address; market: Address; tranches?: Address; protectedToken?: Address; boostToken?: Address }
+  >;
 }
 
 const DEPLOYMENTS = deployments as Record<string, Deployment>;

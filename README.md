@@ -1,7 +1,8 @@
 # Afterglow
 
-Fixed-rate USDG credit lines against tokenized stocks on Robinhood Chain, with a risk engine
-that follows the US equity market clock.
+Afterglow is a fixed-rate USDG credit line against tokenized stocks on Robinhood Chain. The market closes,
+but your credit line doesn't: a market-hours oracle and a Stylus gap-risk model keep weekends safe, and lenders
+choose Protected yield or Boost yield that absorbs losses first.
 
 - **Borrowers** pledge stock tokens (NVDA, SPY, …) and borrow USDG at a fixed rate until a fixed maturity.
 - **Lenders** deposit USDG into an ERC-4626 market whose shares accrete to par at maturity.
@@ -17,6 +18,7 @@ See [docs/DESIGN.md](docs/DESIGN.md) for the problem, market evidence and mechan
 |---|---|
 | [`PhaselockOracle`](src/PhaselockOracle.sol) | Chainlink price + market session (Live / Closing / Closed / Halted), corporate-action and sequencer aware |
 | [`AfterglowMarket`](src/AfterglowMarket.sol) | One collateral, one maturity, one fixed rate; ERC-4626 lender shares; borrow, repay, liquidate |
+| [`AfterglowTranches`](src/AfterglowTranches.sol) | Splits a market's lenders into Protected (senior, fixed target rate, paid first) and Boost (junior, residual yield, first loss); junior must stay at least 20% |
 | [`GapGuard`](stylus/gap-guard/src/lib.rs) (Rust, Arbitrum Stylus) | EWMA model of each stock's Friday-close → Monday-open gaps; tightens the weekend LTV after volatile weekends. Uses OpenZeppelin Contracts for Stylus |
 
 Phaselock knows **when** the market is closed. GapGuard knows **how far it can jump** while closed.

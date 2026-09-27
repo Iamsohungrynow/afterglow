@@ -5,11 +5,11 @@ import { useAccount, useConnect } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { encodeFunctionData, maxUint256, parseUnits } from "viem";
 import { ArrowSquareOut, Lightning } from "@phosphor-icons/react";
-import { erc20Abi, marketAbi } from "@/lib/abi";
+import { erc20Abi, marketAbi, tranchesAbi } from "@/lib/abi";
 import { explorerTx } from "@/lib/chains";
 import { fmt, fmtPct } from "@/lib/format";
 import { fmtDuration, nextTransition } from "@/lib/session";
-import type { MarketView } from "@/hooks/useMarket";
+import { boostAprPct, type MarketView } from "@/hooks/useMarket";
 import type { PositionView } from "@/hooks/usePosition";
 import { useAfterglowAccount, type Call } from "./AccountProvider";
 
@@ -191,25 +191,48 @@ function RepayForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
 function LendForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState<"Deposit" | "Withdraw">("Deposit");
+  const [tranche, setTranche] = useState<"Protected" | "Boost">("Protected");
   const v = Number(amount) || 0;
-  const util = m?.totalAssets ? (m.totalAssets - (m.cash ?? 0)) / m.totalAssets : 0;
+  const t = m?.tranches;
+  const isSenior = tranche === "Protected";
+  const boost = m ? boostAprPct(m) : undefined;
+  const held = pos ? (isSenior ? pos.protectedValue : pos.boostValue) : undefined;
 
   const calls = (owner: `0x${string}`): Call[] => {
     const amt = parseUnits(amount, 6);
-    return mode === "Deposit"
-      ? [
-          { to: m!.usdg!, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [m!.market!, amt] }) },
-          { to: m!.market!, data: encodeFunctionData({ abi: marketAbi, functionName: "deposit", args: [amt, owner] }) },
-        ]
-      : [{ to: m!.market!, data: encodeFunctionData({ abi: marketAbi, functionName: "withdraw", args: [amt, owner, owner] }) }];
+    const vault = t!.address!;
+    if (mode === "Deposit") {
+      return [
+        { to: m!.usdg!, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [vault, amt] }) },
+        { to: vault, data: encodeFunctionData({ abi: tranchesAbi, functionName: isSenior ? "depositSenior" : "depositJunior", args: [amt, owner] }) },
+      ];
+    }
+    return [{ to: vault, data: encodeFunctionData({ abi: tranchesAbi, functionName: isSenior ? "withdrawSenior" : "withdrawJunior", args: [amt, owner] }) }];
   };
 
   let blocked: string | undefined;
   if (v <= 0) blocked = "Enter an amount";
-  else if (mode === "Withdraw" && pos && v > pos.withdrawable) blocked = "More than available to withdraw";
+  else if (mode === "Withdraw" && held !== undefined && v > held + 1e-6) blocked = `More than your ${tranche} balance`;
+  else if (m?.mode === "live" && !t?.address) blocked = "No tranches on this market";
 
   return (
     <div className="flex flex-1 flex-col gap-4">
+      <div className="grid grid-cols-2 gap-px border border-line bg-line">
+        {(["Protected", "Boost"] as const).map((x) => {
+          const on = tranche === x;
+          const apr = x === "Protected" ? t?.seniorAprPct : boost;
+          return (
+            <button key={x} onClick={() => setTranche(x)} className={`bg-ink px-3 py-3 text-left transition ${on ? "bg-ink-3" : "hover:bg-ink-2"}`}>
+              <div className={`text-[13px] ${on ? "text-fg" : "text-fg-2"}`}>{x}</div>
+              <div className={`num mt-1 text-[16px] ${on ? (x === "Boost" ? "text-glow" : "text-fg") : "text-fg-3"}`}>
+                {apr !== undefined ? `${apr.toFixed(2)}%` : x === "Boost" ? "residual" : "-"}
+              </div>
+              <div className="mt-1 text-[11px] text-fg-3">{x === "Protected" ? "Paid first, fixed target" : "Earns the rest, first loss"}</div>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="grid grid-cols-2 gap-1 rounded-[6px] border border-line p-1">
         {(["Deposit", "Withdraw"] as const).map((x) => (
           <button key={x} onClick={() => setMode(x)} className={`h-8 rounded-[4px] text-[12.5px] ${mode === x ? "bg-white/[0.07] text-fg" : "text-fg-3"}`}>
@@ -221,19 +244,40 @@ function LendForm({ m, pos }: { m?: MarketView; pos?: PositionView }) {
         label="Amount (USDG)"
         value={amount}
         onChange={setAmount}
-        hint={pos ? (mode === "Deposit" ? `Wallet ${fmt(pos.wallet.usdg)}` : `Available ${fmt(pos.withdrawable)}`) : undefined}
-        onMax={pos ? () => setAmount(String(mode === "Deposit" ? pos.wallet.usdg : pos.withdrawable)) : undefined}
+        hint={pos ? (mode === "Deposit" ? `Wallet ${fmt(pos.wallet.usdg)}` : `In ${tranche} ${fmt(held)}`) : undefined}
+        onMax={pos ? () => setAmount(String(mode === "Deposit" ? pos.wallet.usdg : (held ?? 0))) : undefined}
       />
-      <dl className="grid gap-2 border-t border-line pt-4 text-[12.5px]">
-        <Row k="Fixed rate on lent USDG" v={m ? `${m.aprPct.toFixed(2)}%` : "-"} />
-        <Row k="Your yield today" v={m ? `${(m.aprPct * util).toFixed(2)}%` : "-"} strong />
-        <Row k="Your deposit" v={pos ? `${fmt(pos.lent)} USDG` : "-"} />
-      </dl>
-      <p className="text-[12px] leading-relaxed text-fg-3">
-        Lenders earn the fixed rate on the share of the pool that is lent. Shares accrete to par at maturity; only unlent USDG can be withdrawn early.
-      </p>
-      <div className="mt-auto">
-        <Submit m={m} blocked={blocked} label={mode} build={calls} onDone={() => setAmount("")} />
+
+      <YieldSource m={m} />
+
+      <Submit m={m} blocked={blocked} label={`${mode} ${tranche}`} build={calls} onDone={() => setAmount("")} />
+    </div>
+  );
+}
+
+/** Where lender yield comes from, and in which order money flows. */
+function YieldSource({ m }: { m?: MarketView }) {
+  const t = m?.tranches;
+  const cover = t?.coverBps;
+  return (
+    <div className="border-t border-line pt-4">
+      <div className="text-[11px] text-fg-3">Where the yield comes from</div>
+      <ol className="mt-2.5 grid gap-2 text-[12px] leading-relaxed text-fg-2">
+        <li>
+          <span className="num text-fg">1.</span> Borrowers pay a fixed <span className="num text-fg">{m ? `${m.aprPct.toFixed(2)}%` : "-"}</span> on the USDG they borrow, secured by
+          over-collateralised {m?.symbol ?? "stock"} tokens.
+        </li>
+        <li>
+          <span className="num text-fg">2.</span> Protected is paid first, up to <span className="num text-fg">{t ? `${t.seniorAprPct.toFixed(2)}%` : "-"}</span>.
+        </li>
+        <li>
+          <span className="num text-fg">3.</span> Boost keeps everything above that, and takes any loss first (for example a Monday gap
+          that leaves bad debt).
+        </li>
+      </ol>
+      <div className="mt-3 flex justify-between text-[11.5px] text-fg-3">
+        <span>Boost cover (min {t ? (t.minJuniorBps / 100).toFixed(0) : 20}%)</span>
+        <span className="num text-fg-2">{cover !== undefined ? `${(cover / 100).toFixed(1)}%` : "-"}</span>
       </div>
     </div>
   );

@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
 import type { Address } from "viem";
-import { marketAbi } from "@/lib/abi";
+import { marketAbi, tranchesAbi } from "@/lib/abi";
 import { MARKETS, deploymentFor, type RiskParams } from "@/lib/markets";
 import { SESSIONS, maxBorrowLtv, scheduleSession, type Session } from "@/lib/session";
 import { useLivePrices } from "./useLivePrices";
@@ -26,6 +26,26 @@ export interface MarketView {
   totalFace?: number;
   totalAssets?: number;
   supplyCap?: number;
+  tranches: TrancheView;
+}
+
+export interface TrancheView {
+  address?: Address;
+  seniorAprPct: number; // Protected target rate
+  minJuniorBps: number;
+  seniorValue?: number;
+  juniorValue?: number;
+  coverBps?: number;
+}
+
+/** Boost APR implied by the waterfall: pool income minus Protected's target, over Boost capital. */
+export function boostAprPct(m: MarketView): number | undefined {
+  const t = m.tranches;
+  if (t.seniorValue === undefined || t.juniorValue === undefined || !t.juniorValue) return undefined;
+  const total = t.seniorValue + t.juniorValue;
+  const util = m.totalAssets ? (m.totalAssets - (m.cash ?? 0)) / m.totalAssets : 0;
+  const poolIncome = total * (m.aprPct / 100) * util;
+  return ((poolIncome - t.seniorValue * (t.seniorAprPct / 100)) / t.juniorValue) * 100;
 }
 
 /** First Thursday 20:00 UTC at or after t (matches the deploy script). */
@@ -75,9 +95,31 @@ export function useMarket(symbol: string, chainId: number | undefined, now: numb
         bigint,
         bigint,
       ];
+      let tranches: TrancheView = { seniorAprPct: (Number(rate) / 1e18) * 62.5, minJuniorBps: 2000 };
+      if (entry!.tranches) {
+        const t = entry!.tranches;
+        const [vals, cover, srate, minJ] = (await client!.multicall({
+          allowFailure: false,
+          contracts: [
+            { address: t, abi: tranchesAbi, functionName: "trancheValues" },
+            { address: t, abi: tranchesAbi, functionName: "juniorCoverBps" },
+            { address: t, abi: tranchesAbi, functionName: "seniorRateWad" },
+            { address: t, abi: tranchesAbi, functionName: "minJuniorBps" },
+          ],
+        })) as unknown as [readonly [bigint, bigint], bigint, bigint, number];
+        tranches = {
+          address: t,
+          seniorAprPct: (Number(srate) / 1e18) * 100,
+          minJuniorBps: Number(minJ),
+          seniorValue: Number(vals[0]) / 1e6,
+          juniorValue: Number(vals[1]) / 1e6,
+          coverBps: Number(cover),
+        };
+      }
       const view: MarketView = {
         symbol,
         mode: "live",
+        tranches,
         market: address,
         token: entry!.token,
         usdg: dep!.usdg,
@@ -111,6 +153,7 @@ export function useMarket(symbol: string, chainId: number | undefined, now: numb
   const view: MarketView = {
     symbol,
     mode: "preview",
+    tranches: { seniorAprPct: apr * 0.625, minJuniorBps: 2000 },
     session,
     price: p.usd / usdg,
     maxLtvBps: maxBorrowLtv(session, rampBps, info.risk.baseLtvBps, info.risk.weekendLtvBps),
