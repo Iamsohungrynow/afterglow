@@ -112,9 +112,8 @@ export function Waterfall() {
         </div>
 
         <p className="mt-6 text-[13px] leading-relaxed text-fg-3">
-          Example vault of {fmt(TOTAL)} USDG. For taking losses first, Boost keeps what is left of the 8% borrower rate after
-          Protected gets its 5% target: with the whole vault lent, that is{" "}
-          <span className="num text-fg-2">{(boostYield * 100).toFixed(0)}%</span> on {fmt(BOOST)} USDG, before any loss.
+          Example vault of {fmt(TOTAL)} USDG, {fmt(BOOST)} in Boost earning{" "}
+          <span className="num text-fg-2">{(boostYield * 100).toFixed(0)}%</span> before losses.
         </p>
       </div>
 

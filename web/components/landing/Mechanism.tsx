@@ -42,8 +42,7 @@ function FixedRate() {
     <div className="flex h-full flex-col p-6 md:p-10">
       <h3 className="text-[26px] font-medium tracking-[-0.02em] text-fg md:text-[30px]">A fixed rate to a fixed date</h3>
       <p className="mt-4 max-w-[54ch] text-[15px] leading-relaxed text-fg-2">
-        Each market is one stock, one maturity and one rate. Borrow P today and you know exactly what you owe on the maturity
-        date. Repay early and you pay only for the days used.
+        One stock, one maturity, one rate. You know what you owe from day one, and repaying early costs only the days used.
       </p>
 
       <div className="mt-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
@@ -124,8 +123,7 @@ function GapGuardCell() {
     <div className="p-6 md:p-10">
       <h3 className="text-[20px] font-medium tracking-[-0.01em] text-fg">GapGuard, in Rust on Arbitrum Stylus</h3>
       <p className="mt-3 max-w-[48ch] text-[14px] leading-relaxed text-fg-2">
-        Learns how far each stock jumps between the Friday close and the Sunday night reopen. It can only tighten the weekend
-        limit, never loosen it.
+        Learns how far each stock jumps over the weekend, from real Chainlink prices. It can only tighten the limit.
       </p>
       <div className="mt-7">
         <GapBars gaps={m.gaps} height={104} />

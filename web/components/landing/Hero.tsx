@@ -59,9 +59,9 @@ export function Hero() {
             <br />
             <em className="font-display italic text-glow">Your credit line doesn&apos;t.</em>
           </h1>
-          <p className="mt-6 max-w-[44ch] text-[16px] leading-relaxed text-fg-2 md:text-[17px]">
-            Fixed-rate USDG credit lines against tokenized stocks on Robinhood Chain. Risk follows the real market clock,
-            weekends included.
+          <p className="mt-6 max-w-[50ch] text-[16px] leading-relaxed text-fg-2 md:text-[17px]">
+            Borrow USDG against tokenized stocks at a fixed rate, weekends included. Lenders choose how much weekend risk
+            they take.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-3">
             <LaunchButton large />

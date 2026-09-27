@@ -5,6 +5,8 @@ import { Hero } from "@/components/landing/Hero";
 import { WeekSimulator } from "@/components/landing/WeekSimulator";
 import { Waterfall } from "@/components/landing/Waterfall";
 import { Mechanism } from "@/components/landing/Mechanism";
+import { Problem } from "@/components/landing/Problem";
+import { Strategies } from "@/components/landing/Strategies";
 import { Reveal } from "@/components/landing/Reveal";
 import { LaunchButton, SourceButton, REPO } from "@/components/landing/LaunchButton";
 
@@ -17,6 +19,15 @@ const BUILT_ON: [string, string][] = [
   ["OpenZeppelin", "contract libraries"],
 ];
 
+const SAFETY = [
+  "Repay can never be paused",
+  "No liquidation on a frozen price",
+  "USDG depeg circuit breaker (±2%)",
+  "ERC-4626 with inflation-attack protection",
+  "OpenZeppelin in Solidity and Stylus",
+  "59 tests + mainnet fork tests",
+];
+
 export default function Landing() {
   return (
     <Providers>
@@ -24,11 +35,14 @@ export default function Landing() {
         <nav className="mx-auto flex h-16 max-w-[1400px] items-center justify-between px-6">
           <Wordmark />
           <div className="flex items-center gap-7 text-[13px] text-fg-2">
+            <a href="#problem" className="hidden transition-colors hover:text-fg md:inline">
+              Why
+            </a>
             <a href="#week" className="hidden transition-colors hover:text-fg md:inline">
-              The week
+              Borrow
             </a>
             <a href="#lenders" className="hidden transition-colors hover:text-fg md:inline">
-              Lenders
+              Lend
             </a>
             <a href="#mechanism" className="hidden transition-colors hover:text-fg md:inline">
               Mechanism
@@ -44,16 +58,17 @@ export default function Landing() {
       <main>
         <Hero />
 
+        <Problem />
+
         {/* Drag through the week */}
         <section id="week" className="scroll-mt-16 border-t border-line">
           <div className="mx-auto max-w-[1400px] px-6 py-24 md:py-28">
             <Reveal className="grid grid-cols-1 gap-6 md:grid-cols-12 md:items-end">
               <h2 className="text-[34px] font-medium leading-[1.05] tracking-[-0.025em] text-fg md:col-span-7 md:text-[48px]">
-                Stocks go dark for 48 hours every weekend. Drag through the week.
+                Borrow against your stock. Your limit follows the market clock.
               </h2>
               <p className="max-w-[46ch] text-[15.5px] leading-relaxed text-fg-2 md:col-span-5 md:justify-self-end">
-                Price feeds freeze from Friday 20:00 to Sunday 20:00 New York time. Pick any moment to see the session, the
-                borrow limit and what you can do. NVDA limits shown.
+                Keep your shares, borrow USDG at a fixed rate. Drag through the week to see your limit. NVDA shown.
               </p>
             </Reveal>
             <div className="mt-12">
@@ -65,16 +80,23 @@ export default function Landing() {
         {/* Who takes the loss */}
         <section id="lenders" className="scroll-mt-16 border-t border-line">
           <div className="mx-auto max-w-[1400px] px-6 py-24 md:py-28">
-            <Reveal className="max-w-[760px]">
-              <h2 className="text-[34px] font-medium leading-[1.05] tracking-[-0.025em] text-fg md:text-[48px]">
-                Lenders choose who takes the loss.
+            <Reveal className="grid grid-cols-1 gap-6 md:grid-cols-12 md:items-end">
+              <h2 className="text-[34px] font-medium leading-[1.05] tracking-[-0.025em] text-fg md:col-span-7 md:text-[48px]">
+                Two vaults. Pick your side of the weekend.
               </h2>
-              <p className="mt-5 max-w-[62ch] text-[15.5px] leading-relaxed text-fg-2">
-                Protected is paid first and targets a fixed 5%. Boost keeps the rest of the 8% borrower rate and absorbs any
-                loss first. Boost must be at least 20% of the vault. Drag the loss to see the order.
+              <p className="max-w-[46ch] text-[15.5px] leading-relaxed text-fg-2 md:col-span-5 md:justify-self-end">
+                Same borrowers, same fixed rate. You choose how much weekend risk you carry.
               </p>
             </Reveal>
             <div className="mt-12">
+              <Strategies />
+            </div>
+            <Reveal className="mt-20 max-w-[760px]">
+              <h3 className="text-[24px] font-medium tracking-[-0.02em] text-fg md:text-[30px]">
+                A stock gaps down on Monday. Who pays?
+              </h3>
+            </Reveal>
+            <div className="mt-8">
               <Waterfall />
             </div>
           </div>
@@ -88,13 +110,22 @@ export default function Landing() {
                 Wall Street&apos;s pledged-asset lines, <em className="italic text-glow">onchain.</em>
               </h2>
               <p className="max-w-[44ch] text-[15.5px] leading-relaxed text-fg-2 md:col-span-4 md:justify-self-end">
-                Three parts: a fixed-rate market, an oracle that knows the market calendar, and a model that learns weekend
-                gaps.
+                A fixed-rate market, an oracle that knows the market calendar, and a Rust gap model on Arbitrum Stylus.
               </p>
             </Reveal>
             <div className="mt-12">
               <Mechanism />
             </div>
+            <Reveal className="mt-14">
+              <p className="text-[13px] text-fg-3">Built to be audited</p>
+              <ul className="mt-5 grid grid-cols-1 gap-x-10 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+                {SAFETY.map((k) => (
+                  <li key={k} className="border-l border-line-strong pl-4 text-[14.5px] text-fg">
+                    {k}
+                  </li>
+                ))}
+              </ul>
+            </Reveal>
           </div>
         </section>
 

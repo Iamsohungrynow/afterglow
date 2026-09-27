@@ -85,7 +85,7 @@ export function WeekSimulator() {
   const limitText = useTransform(spring, (v) => (v / 100).toFixed(2));
   const meterW = useTransform(spring, (v) => `${meterPos(v)}%`);
 
-  // Play: sweep the week in about 16 seconds.
+  // Play: sweep the week in about 7 seconds.
   const oRef = useRef(o);
   oRef.current = o;
   useEffect(() => {
@@ -94,7 +94,7 @@ export function WeekSimulator() {
     let last = performance.now();
     let pos = oRef.current;
     const step = (ts: number) => {
-      pos = Math.min(MAX, pos + ((ts - last) / 1000) * (WEEK / 16));
+      pos = Math.min(MAX, pos + ((ts - last) / 1000) * (WEEK / 7));
       last = ts;
       setOffset(pos);
       if (pos >= MAX) setPlaying(false);

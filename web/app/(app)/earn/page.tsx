@@ -54,7 +54,7 @@ export default function EarnPage() {
     <div className="mx-auto w-full max-w-[1200px] px-4 py-10 md:px-6">
       <PageHeader
         title="Earn"
-        subtitle="Lend USDG to stock-backed borrowers. Choose Protected for a paid-first target rate, or Boost for the residual yield."
+        subtitle="Lend USDG against stock at a fixed rate. Protected is paid first. Boost earns more and takes losses first."
         pill={{ label: "Total deposits", value: total === undefined ? <Skel w={70} h={12} /> : `${fmt(total)} USDG` }}
       />
 
