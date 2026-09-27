@@ -54,7 +54,7 @@ writes the addresses to `deployments/<chainId>.json`.
 
 | Network | Collateral | Prices | Supply cap |
 |---|---|---|---|
-| Robinhood Chain testnet (46630) | faucet TSLA, AMZN | `DemoPriceFeed` (owner-updated, testnet only) | none |
+| Robinhood Chain testnet (46630) | faucet TSLA, AMZN | `DemoPriceFeed`, mirrored from mainnet Chainlink | none |
 | Robinhood Chain (4663) | NVDA, SPY, QQQ | Chainlink | 1,000 USDG per market |
 | Arbitrum Sepolia (421614) | `DemoStockToken` NVDA, SPY (public faucet) | `DemoPriceFeed` | none |
 
@@ -88,8 +88,22 @@ locally (see [`stylus/patches`](stylus/patches)) so the macro crate links under 
 Optional env: `RATE_WAD` (default `0.08e18`), `TERM_DAYS` (28; maturity snaps to the next Thursday 20:00 UTC),
 `SUPPLY_CAP` (loan-token units).
 
-Testnet demo: move a price with `cast send <feed> "publish(int256)" 30000000000 --account deployer --rpc-url robinhood_testnet`
-($300.00 at 8 decimals). Get test ETH and stock tokens from `faucet.testnet.chain.robinhood.com` and test USDG from `faucet.paxos.com`.
+### Prices on testnet
+
+Chainlink publishes equity feeds on Robinhood Chain **mainnet only**, so the testnet markets read a
+Chainlink-compatible `DemoPriceFeed` (same `AggregatorV3Interface`). To keep the demo honest, a GitHub Action
+([`mirror-prices.yml`](.github/workflows/mirror-prices.yml) → [`scripts/mirror-prices.sh`](scripts/mirror-prices.sh))
+copies every new mainnet Chainlink print for TSLA, AMZN and USDG into the testnet feeds every 10 minutes. The
+testnet therefore trades on real prices and freezes over the weekend exactly when mainnet does.
+The integration with the real feeds is covered by fork tests against Robinhood Chain mainnet state
+([`test/fork/RobinhoodFork.t.sol`](test/fork/RobinhoodFork.t.sol)).
+
+One-time setup: create a keeper wallet (`cast wallet new`), fund it from the testnet faucet, hand it the
+demo feeds with `scripts\set-price-keeper.ps1 -Keeper <address>`, and store its key as the repository secret
+`MIRROR_PRIVATE_KEY`.
+
+Testnet demo: move a price by hand with `cast send <feed> "publish(int256)" 30000000000 --private-key <keeper key> --rpc-url robinhood_testnet`
+($300.00 at 8 decimals; the mirror overwrites it at the next mainnet print). Get test ETH and stock tokens from `faucet.testnet.chain.robinhood.com` and test USDG from `faucet.paxos.com`.
 
 After US daylight saving ends (1 Nov 2026) the owner must shift the weekly close by one hour:
 `setSchedule(5 days + 1 hours, 2 days, 4 hours, 1 hours)`.

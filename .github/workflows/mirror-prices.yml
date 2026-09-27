@@ -1,0 +1,28 @@
+name: Mirror Chainlink prices to testnet
+
+# Keeps the Robinhood Chain testnet demo feeds in step with mainnet Chainlink. See scripts/mirror-prices.sh.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: mirror-prices
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Mirror
+        env:
+          MIRROR_PRIVATE_KEY: ${{ secrets.MIRROR_PRIVATE_KEY }}
+        run: |
+          if [ -z "$MIRROR_PRIVATE_KEY" ]; then
+            echo "::notice::MIRROR_PRIVATE_KEY is not set yet, skipping (see README, Prices on testnet)"
+            exit 0
+          fi
+          bash scripts/mirror-prices.sh
