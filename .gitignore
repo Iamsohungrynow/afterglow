@@ -1,0 +1,7 @@
+out/
+cache/
+broadcast/
+.env
+node_modules/
+# private working notes (earlier research, not part of the submission)
+notes/
