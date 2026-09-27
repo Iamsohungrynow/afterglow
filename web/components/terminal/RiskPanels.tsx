@@ -52,44 +52,49 @@ export function MarketChartPanel({ symbol, m, now }: { symbol: string; m?: Marke
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 px-4 pb-3 text-[11.5px]">
             <Legend k="Weekday limit" v={fmtPct(risk.baseLtvBps, 0)} />
-            <Legend k="Weekend limit" v={fmtPct(m?.weekendLtvBps ?? risk.weekendLtvBps, 1)} accent />
-            <Legend k="Liquidation" v={fmtPct(risk.liqLtvBps, 0)} />
+            <Legend k="Weekend limit" v={fmtPct(m?.weekendLtvBps ?? risk.weekendLtvBps, 1)} tone="glow" />
+            <Legend k="Liquidation" v={fmtPct(risk.liqLtvBps, 0)} tone="halt" />
             <Legend k="Liquidation bonus" v={fmtPct(risk.liqBonusBps, 0)} />
           </div>
         </div>
       ) : (
         <div className="px-4 pb-3 pt-4">
-          <GapBars gaps={info.gaps} height={220} />
-          <div className="mt-2 flex justify-between text-[11px] text-fg-3">
-            <span>{info.gaps.length} weekends ago</span>
-            <span>Last weekend</span>
-          </div>
+          <GapBars gaps={info.gaps} height={240} />
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-px border-t border-line bg-line md:grid-cols-4">
-        <Cell label="Gap volatility (σ)" value={fmtPct(model.sigma, 2)} />
+      <div className="grid grid-cols-2 gap-px border-t border-line bg-line md:grid-cols-5">
+        <Cell label="Gap volatility (σ)" value={fmtPct(model.sigma, 2)} tone="glow" />
         <Cell label="3σ buffer" value={fmtPct(model.buffer, 1)} />
-        <Cell label="Model weekend limit" value={fmtPct(model.weekendLtv, 1)} accent={binding} />
+        <Cell label="Model weekend limit" value={fmtPct(model.weekendLtv, 1)} tone={binding ? "glow" : "fg"} />
         <Cell label="Binding" value={binding ? "GapGuard model" : "Configured"} />
+        <Cell
+          label="Weekend premium"
+          value={m?.premiumPpm !== undefined ? `${(m.premiumPpm / 100).toFixed(1)} bp a weekend` : "-"}
+          tone={m?.premiumPpm !== undefined ? "glow" : "muted"}
+        />
       </div>
     </section>
   );
 }
 
-function Legend({ k, v, accent }: { k: string; v: string; accent?: boolean }) {
+const TONE = { fg: "text-fg", glow: "text-glow", live: "text-live", halt: "text-halt", muted: "text-fg-3" } as const;
+type Tone = keyof typeof TONE;
+
+function Legend({ k, v, tone = "fg" }: { k: string; v: string; tone?: Tone }) {
   return (
     <span className="whitespace-nowrap">
-      <span className="text-fg-3">{k}</span> <span className={`num ${accent ? "text-glow" : "text-fg-2"}`}>{v}</span>
+      <span className="text-fg-3">{k}</span> <span className={`num ${TONE[tone]}`}>{v}</span>
     </span>
   );
 }
 
-function Cell({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+/** Label over a value coloured by meaning: amber weekend, red liquidation, green healthy. */
+function Cell({ label, value, tone = "fg" }: { label: string; value: string; tone?: Tone }) {
   return (
-    <div className="bg-ink px-4 py-2.5">
+    <div className="bg-ink px-4 py-3">
       <div className="text-[11px] text-fg-3">{label}</div>
-      <div className={`num mt-1 text-[13px] ${accent ? "text-glow" : "text-fg"}`}>{value}</div>
+      <div className={`num mt-1.5 text-[14px] ${TONE[tone]}`}>{value}</div>
     </div>
   );
 }

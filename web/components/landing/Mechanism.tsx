@@ -128,7 +128,7 @@ function GapGuardCell() {
         the weekend premium Boost earns.
       </p>
       <div className="mt-7">
-        <GapBars gaps={m.gaps} height={104} />
+        <GapBars gaps={m.gaps} height={160} />
         <div className="mt-2 flex justify-between text-[12px] text-fg-3">
           <span>NVDA, last {m.gaps.length} weekends</span>
           <span>real Chainlink prints</span>

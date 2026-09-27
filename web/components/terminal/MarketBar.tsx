@@ -80,7 +80,7 @@ export function MarketBar({
         )}
       </div>
 
-      <div className="flex min-w-0 flex-1 items-center gap-7 overflow-x-auto whitespace-nowrap px-4 [scrollbar-width:none]">
+      <div className="flex min-w-0 flex-1 items-center gap-6 overflow-x-auto whitespace-nowrap px-4 [scrollbar-width:none]">
         <Stat label="Oracle price" loading={!m} value={m && fmt(m.price)} />
         <div className="shrink-0">
           <div className="text-[11px] leading-none text-fg-3">Session</div>
@@ -93,9 +93,15 @@ export function MarketBar({
             )}
           </div>
         </div>
-        <Stat label="Borrow limit now" loading={!m} value={m && fmtPct(m.maxLtvBps, 1)} accent={m?.session === "Closing"} />
-        <Stat label="Weekend LTV" loading={!m} value={m && fmtPct(m.weekendLtvBps, 1)} />
+        <Stat
+          label="Borrow limit now"
+          loading={!m}
+          value={m && (m.maxLtvBps ? fmtPct(m.maxLtvBps, 1) : "Paused")}
+          tone={!m?.maxLtvBps ? "muted" : m.session === "Closing" ? "glow" : "live"}
+        />
+        <Stat label="Weekend LTV" loading={!m} value={m && fmtPct(m.weekendLtvBps, 1)} tone="glow" />
         <Stat label="Fixed APR" loading={!m} value={m && `${m.aprPct.toFixed(2)}%`} />
+        {m?.premiumPpm !== undefined && <Stat label="Weekend premium" value={`${(m.premiumPpm / 100).toFixed(1)} bp/wk`} tone="glow" />}
         <Stat
           label="Maturity"
           loading={!m || !now}
@@ -103,17 +109,26 @@ export function MarketBar({
         />
         <Stat label="Liquidity" loading={!m} value={live && m?.cash !== undefined ? `${fmt(m.cash, 0)} USDG` : "-"} />
         <Stat label="Utilisation" loading={!m} value={live ? fmtPct(util) : "-"} />
-        <Stat label="USDG peg" loading={usdgUsd === undefined} value={usdgUsd !== undefined ? `$${usdgUsd.toFixed(4)}` : undefined} />
+        <Stat
+          label="USDG peg"
+          loading={usdgUsd === undefined}
+          value={usdgUsd !== undefined ? `$${usdgUsd.toFixed(4)}` : undefined}
+          tone={usdgUsd === undefined ? "fg" : Math.abs(usdgUsd - 1) <= 0.005 ? "live" : Math.abs(usdgUsd - 1) <= 0.02 ? "glow" : "halt"}
+        />
       </div>
     </div>
   );
 }
 
-function Stat({ label, value, loading, accent }: { label: string; value?: string; loading?: boolean; accent?: boolean }) {
+const TONE = { fg: "text-fg", glow: "text-glow", live: "text-live", halt: "text-halt", muted: "text-fg-3" } as const;
+type Tone = keyof typeof TONE;
+
+/** Label over a value coloured by meaning: amber weekend, red liquidation, green healthy. */
+function Stat({ label, value, loading, tone = "fg" }: { label: string; value?: string; loading?: boolean; tone?: Tone }) {
   return (
     <div className="shrink-0">
       <div className="text-[11px] leading-none text-fg-3">{label}</div>
-      <div className={`num mt-1.5 text-[13px] leading-none ${accent ? "text-glow" : "text-fg"}`}>
+      <div className={`num mt-1.5 text-[13px] leading-none ${TONE[tone]}`}>
         {loading ? <Skel /> : (value ?? "-")}
       </div>
     </div>

@@ -124,22 +124,23 @@ export function WeekendTab({ m, symbol }: { m?: MarketView; symbol: string }) {
           <span className="text-[12px] text-fg-3">Chainlink, Robinhood Chain</span>
         </div>
         <div className="mt-5">
-          <GapBars gaps={info.gaps} height={120} />
+          <GapBars gaps={info.gaps} height={180} />
         </div>
-        <div className="mt-2 flex justify-between text-[11.5px] text-fg-3">
-          <span>Oldest</span>
-          <span>Latest</span>
-        </div>
-        <div className="mt-6 grid grid-cols-2 gap-5 md:grid-cols-4">
+        <div className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-[10px] border border-line bg-line md:grid-cols-5">
           {[
-            { label: "Gap volatility", value: pct(model.sigma) },
-            { label: "Safety buffer", value: pct(model.buffer) },
-            { label: "Model weekend LTV", value: fmtPct(model.weekendLtv, 2) },
-            { label: "Weekend LTV in use", value: m ? fmtPct(m.weekendLtvBps, 2) : "-" },
+            { label: "Gap volatility (σ)", value: pct(model.sigma), tone: "text-glow" },
+            { label: "Safety buffer", value: pct(model.buffer), tone: "text-fg" },
+            { label: "Model weekend LTV", value: fmtPct(model.weekendLtv, 2), tone: "text-fg" },
+            { label: "Weekend LTV in use", value: m ? fmtPct(m.weekendLtvBps, 2) : "-", tone: "text-glow" },
+            {
+              label: "Weekend premium",
+              value: m?.premiumPpm !== undefined ? `${(m.premiumPpm / 100).toFixed(1)} bp` : "-",
+              tone: m?.premiumPpm !== undefined ? "text-glow" : "text-fg-3",
+            },
           ].map((x) => (
-            <div key={x.label}>
+            <div key={x.label} className="bg-ink-2 p-4">
               <div className="text-[12px] text-fg-3">{x.label}</div>
-              <div className="num mt-1.5 text-[18px] text-fg">{x.value}</div>
+              <div className={`num mt-1.5 text-[18px] ${x.tone}`}>{x.value}</div>
             </div>
           ))}
         </div>

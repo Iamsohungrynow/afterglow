@@ -85,6 +85,11 @@ export function WeekClock({
   const rampX = x(s.weeklyCloseOffset - s.closingWindow);
   const base = y(0);
   const nowSec = now !== undefined ? intoWeek(now) : undefined;
+  // Keep the level tags out of the way of the "now" line: right edge by default, left when now is late.
+  const nowX = nowSec !== undefined ? x(nowSec) : undefined;
+  const tagsLeft = nowX !== undefined && nowX > PAD_L + plotW * 0.62;
+  const tagX = tagsLeft ? PAD_L + 4 : W - PAD_R - 4;
+  const weekdaySec = nowSec !== undefined && Math.abs(nowSec - 2.5 * 86400) < 0.9 * 86400 ? 0.9 * 86400 : 2.5 * 86400;
 
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!hover || e.pointerType === "touch") return;
@@ -158,9 +163,9 @@ export function WeekClock({
 
       {!compact && (
         <>
-          <Pill x={W - PAD_R - 4} y={y(risk.liqLtvBps)} anchor="end" color="var(--color-halt)" text={`liquidation ${pct(risk.liqLtvBps)}`} />
-          <Pill x={W - PAD_R - 4} y={y(weekend)} anchor="end" color="var(--color-glow)" text={`weekend ${pct(weekend)}`} />
-          <Pill x={x(2.5 * 86400)} y={y(risk.baseLtvBps)} anchor="middle" color="var(--color-fg)" text={`weekday ${pct(risk.baseLtvBps)}`} />
+          <Pill x={tagX} y={y(risk.liqLtvBps)} anchor={tagsLeft ? "start" : "end"} color="var(--color-halt)" text={`liquidation ${pct(risk.liqLtvBps)}`} />
+          <Pill x={tagX} y={y(weekend)} anchor={tagsLeft ? "start" : "end"} color="var(--color-glow)" text={`weekend ${pct(weekend)}`} />
+          <Pill x={x(weekdaySec)} y={y(risk.baseLtvBps)} anchor="middle" color="var(--color-fg)" text={`weekday ${pct(risk.baseLtvBps)}`} />
           <text x={rampX - 5} y={PAD_T + 13} textAnchor="end" fill="var(--color-glow)" fontSize="10" fontFamily={MONO}>
             ramp
           </text>
