@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ArrowUpRight } from "@phosphor-icons/react/dist/ssr";
 import { Providers } from "@/components/Providers";
 import { Wordmark } from "@/components/Wordmark";
@@ -23,10 +24,17 @@ const SAFETY = [
   "Repay can never be paused",
   "No liquidation on a frozen price",
   "USDG depeg circuit breaker (±2%)",
-  "ERC-4626 with inflation-attack protection",
-  "OpenZeppelin in Solidity and Stylus",
-  "59 tests + mainnet fork tests",
+  "97 tests + 5 mainnet fork tests",
 ];
+
+/** Small, quiet link into the docs where the landing page stops explaining. */
+function DocsLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} className="text-[13px] text-fg-3 transition-colors hover:text-glow">
+      {children} →
+    </Link>
+  );
+}
 
 export default function Landing() {
   return (
@@ -47,6 +55,9 @@ export default function Landing() {
             <a href="#mechanism" className="hidden transition-colors hover:text-fg md:inline">
               Mechanism
             </a>
+            <Link href="/docs" className="transition-colors hover:text-fg">
+              Docs
+            </Link>
             <a href={REPO} className="hidden items-center gap-1 transition-colors hover:text-fg md:inline-flex">
               Source <ArrowUpRight size={12} />
             </a>
@@ -67,9 +78,14 @@ export default function Landing() {
               <h2 className="text-[34px] font-medium leading-[1.05] tracking-[-0.025em] text-fg md:col-span-7 md:text-[48px]">
                 Borrow against your stock. Your limit follows the market clock.
               </h2>
-              <p className="max-w-[46ch] text-[15.5px] leading-relaxed text-fg-2 md:col-span-5 md:justify-self-end">
-                Keep your shares, borrow USDG at a fixed rate. Drag through the week to see your limit. NVDA shown.
-              </p>
+              <div className="md:col-span-5 md:justify-self-end">
+                <p className="max-w-[46ch] text-[15.5px] leading-relaxed text-fg-2">
+                  Keep your shares, borrow USDG at a fixed rate. Drag the week.
+                </p>
+                <div className="mt-3">
+                  <DocsLink href="/docs#borrowing">How borrowing works</DocsLink>
+                </div>
+              </div>
             </Reveal>
             <div className="mt-12">
               <WeekSimulator />
@@ -85,7 +101,7 @@ export default function Landing() {
                 Two vaults. Pick your side of the weekend.
               </h2>
               <p className="max-w-[46ch] text-[15.5px] leading-relaxed text-fg-2 md:col-span-5 md:justify-self-end">
-                Same borrowers, same fixed rate. You choose how much weekend risk you carry.
+                Same borrowers, same fixed rate. Choose how much weekend risk you carry.
               </p>
             </Reveal>
             <div className="mt-12">
@@ -110,7 +126,7 @@ export default function Landing() {
                 Wall Street&apos;s pledged-asset lines, <em className="italic text-glow">onchain.</em>
               </h2>
               <p className="max-w-[44ch] text-[15.5px] leading-relaxed text-fg-2 md:col-span-4 md:justify-self-end">
-                A fixed-rate market, an oracle that knows the market calendar, and a Rust gap model on Arbitrum Stylus.
+                A fixed-rate market, a market-hours oracle and a Rust gap model.
               </p>
             </Reveal>
             <div className="mt-12">
@@ -118,13 +134,16 @@ export default function Landing() {
             </div>
             <Reveal className="mt-14">
               <p className="text-[13px] text-fg-3">Built to be audited</p>
-              <ul className="mt-5 grid grid-cols-1 gap-x-10 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ul className="mt-5 grid grid-cols-1 gap-x-10 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
                 {SAFETY.map((k) => (
                   <li key={k} className="border-l border-line-strong pl-4 text-[14.5px] text-fg">
                     {k}
                   </li>
                 ))}
               </ul>
+              <div className="mt-6">
+                <DocsLink href="/docs#safety">Safety and testing</DocsLink>
+              </div>
             </Reveal>
           </div>
         </section>
@@ -176,7 +195,15 @@ export default function Landing() {
       <footer className="border-t border-line">
         <div className="mx-auto flex max-w-[1400px] flex-col gap-4 px-6 py-8 text-[12px] text-fg-3 md:flex-row md:items-center md:justify-between">
           <Wordmark />
-          <span>Unaudited hackathon build. Testnet only.</span>
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <Link href="/docs" className="transition-colors hover:text-fg-2">
+              Docs
+            </Link>
+            <a href={REPO} className="transition-colors hover:text-fg-2">
+              Source
+            </a>
+            <span>Unaudited hackathon build. Testnet only.</span>
+          </div>
         </div>
       </footer>
     </Providers>

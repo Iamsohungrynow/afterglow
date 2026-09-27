@@ -43,10 +43,8 @@ function clock(offset: number) {
 
 const PHASE: Record<Session, string> = {
   Live: `Prices are live. Borrow up to ${risk.baseLtvBps / 100}% of your collateral value.`,
-  Closing: `The final 4 hours before the weekly close. The borrow limit glides from ${risk.baseLtvBps / 100}% to ${
-    risk.weekendLtvBps / 100
-  }%, so nobody enters the weekend at the edge.`,
-  Closed: "Price feeds are frozen until Sunday 20:00 New York. No new debt and no liquidations. Repay and add collateral any time.",
+  Closing: `Final 4 hours before the close. The limit glides from ${risk.baseLtvBps / 100}% to ${risk.weekendLtvBps / 100}%.`,
+  Closed: "Prices frozen until Sunday 20:00 New York. Repay and add collateral any time.",
   Halted: "Trading is halted.",
 };
 
@@ -283,7 +281,7 @@ export function WeekSimulator() {
             {p.label}
           </button>
         ))}
-        <span className="ml-auto hidden text-[12px] text-fg-3 lg:inline">Drag the chart or use the arrow keys. Shift for 15 minutes.</span>
+        <span className="ml-auto hidden text-[12px] text-fg-3 lg:inline">Drag, or use the arrow keys.</span>
       </div>
 
       {/* What you can do right now */}

@@ -1,7 +1,8 @@
+import Link from "next/link";
 import { ShieldCheck, TrendUp } from "@phosphor-icons/react/dist/ssr";
 import type { Icon } from "@phosphor-icons/react";
 import { Reveal } from "./Reveal";
-import { BASE, BOOST_APY, BOOST_FROM_PREMIUM, PREMIUM_BP, TARGET } from "./example";
+import { BASE, BOOST_APY, BOOST_FROM_PREMIUM, TARGET } from "./example";
 
 interface Strategy {
   icon: Icon;
@@ -29,7 +30,7 @@ const STRATEGIES: Strategy[] = [
     icon: TrendUp,
     name: "Boost",
     yield: `~${BOOST_APY.toFixed(0)}%`,
-    yieldNote: `fully lent, ~${BOOST_FROM_PREMIUM.toFixed(0)} points of it weekend premium`,
+    yieldNote: `fully lent, ~${BOOST_FROM_PREMIUM.toFixed(0)} points from premiums`,
     pitch: "Get paid to cover the weekend.",
     rows: [
       ["Earns", `Every weekend premium, plus the interest above Protected's ${TARGET}%`],
@@ -56,11 +57,6 @@ export function Strategies() {
           Boost keeps <span className="text-glow">the rest, premiums included</span>
         </span>
       </Reveal>
-      <p className="mt-4 max-w-[80ch] text-[14px] leading-relaxed text-fg-2">
-        The premium is priced per stock from its real weekend moves: NVDA pays{" "}
-        <span className="num text-fg">{PREMIUM_BP.toFixed(1)} bp</span> a weekend. Unlent USDG earns too: it sweeps into a
-        savings vault, and on weekends almost all of it does.
-      </p>
 
       <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-line bg-line md:grid-cols-2">
         {STRATEGIES.map((s, i) => (
@@ -88,8 +84,10 @@ export function Strategies() {
         ))}
       </div>
       <p className="mt-4 text-[12.5px] leading-relaxed text-fg-3">
-        Example yields, fully lent. When little is lent, Boost tops up Protected first. Boost must stay at least 20% of
-        the vault.
+        Example yields, fully lent.{" "}
+        <Link href="/docs#lender-vaults" className="transition-colors hover:text-glow">
+          How the vaults work →
+        </Link>
       </p>
     </div>
   );

@@ -60,8 +60,7 @@ export function Hero() {
             <em className="font-display italic text-glow">even while Wall Street sleeps.</em>
           </h1>
           <p className="mt-6 max-w-[50ch] text-[16px] leading-relaxed text-fg-2 md:text-[17px]">
-            Lend USDG against tokenized stocks at a fixed rate and earn every hour, weekends included. Borrowers keep their
-            shares. You choose how much weekend risk you take.
+            Lend USDG against tokenized stocks at a fixed rate. Earn through the weekend.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-3">
             <LaunchButton large />
@@ -101,7 +100,7 @@ function HorizonCaption({ now }: { now: number | undefined }) {
         </span>
       </p>
       <p className="hidden text-[12px] text-fg-3 md:block">
-        The sun follows the real US market clock. It sets at the Friday close.
+        The sun follows the real US market clock.
       </p>
     </div>
   );

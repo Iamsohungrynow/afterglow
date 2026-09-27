@@ -53,6 +53,9 @@ function TopNav() {
         })}
       </nav>
       <div className="flex items-center gap-2">
+        <Link href="/docs" className="mr-2 hidden text-[12.5px] text-fg-3 transition-colors hover:text-fg-2 lg:inline">
+          Docs
+        </Link>
         <NetworkSelect />
         <ConnectButton />
       </div>
@@ -116,7 +119,12 @@ function StatusFooter() {
         {block !== undefined && <span className="num">#{block.toString()}</span>}
         {gasless && <span className="text-glow">Gas sponsored by ZeroDev</span>}
       </div>
-      <span className="shrink-0">Unaudited. Testnet.</span>
+      <span className="flex shrink-0 items-center gap-4">
+        <Link href="/docs" className="transition-colors hover:text-fg-2">
+          Docs
+        </Link>
+        Unaudited. Testnet.
+      </span>
     </footer>
   );
 }

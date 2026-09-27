@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Check, X } from "@phosphor-icons/react/dist/ssr";
 import { Reveal } from "./Reveal";
 import { CountUp } from "./CountUp";
@@ -5,19 +6,19 @@ import { CountUp } from "./CountUp";
 const APPROACHES: { name: string; body: string; verdict: string; ok: boolean }[] = [
   {
     name: "Lend on Friday's price",
-    body: "Loans open against a stale price. A Monday gap becomes the lenders' bad debt.",
+    body: "Loans open on a stale price. Monday's gap becomes bad debt.",
     verdict: "Hidden risk for lenders",
     ok: false,
   },
   {
     name: "Freeze everything",
-    body: "Safe for lenders, but borrowers cannot even repay until Monday.",
+    body: "Safe for lenders, but borrowers cannot repay until Monday.",
     verdict: "Stuck borrowers",
     ok: false,
   },
   {
     name: "Afterglow: follow the market clock",
-    body: "Limits tighten before the close, repaying always works, and the weekend risk is paid to the lenders who choose to take it.",
+    body: "Limits tighten before the close. Repay always works. Lenders are paid for weekend risk.",
     verdict: "Open all weekend, risk priced",
     ok: true,
   },
@@ -38,9 +39,14 @@ export function Problem() {
           <h2 className="text-[34px] font-medium leading-[1.05] tracking-[-0.025em] text-fg md:col-span-7 md:text-[48px]">
             Tokenized stocks trade around the clock. Their prices don&apos;t.
           </h2>
-          <p className="max-w-[46ch] text-[15.5px] leading-relaxed text-fg-2 md:col-span-5 md:justify-self-end">
-            Stock prices freeze from Friday&apos;s close to Sunday night. Lenders handle that gap one of three ways.
-          </p>
+          <div className="md:col-span-5 md:justify-self-end">
+            <p className="max-w-[46ch] text-[15.5px] leading-relaxed text-fg-2">
+              Prices freeze from Friday&apos;s close to Sunday night. Three ways to handle it.
+            </p>
+            <Link href="/docs#weekend-problem" className="mt-3 inline-block text-[13px] text-fg-3 transition-colors hover:text-glow">
+              The weekend problem →
+            </Link>
+          </div>
         </Reveal>
 
         <div className="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-line bg-line lg:grid-cols-3">

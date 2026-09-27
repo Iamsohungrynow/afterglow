@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { MARKETS, gapModel } from "@/lib/markets";
 import type { Session } from "@/lib/session";
 import { GapBars } from "@/components/GapBars";
@@ -43,7 +44,7 @@ function FixedRate() {
     <div className="flex h-full flex-col p-6 md:p-10">
       <h3 className="text-[26px] font-medium tracking-[-0.02em] text-fg md:text-[30px]">A fixed rate to a fixed date</h3>
       <p className="mt-4 max-w-[54ch] text-[15px] leading-relaxed text-fg-2">
-        One stock, one maturity, one rate. You know what you owe from day one, and repaying early costs only the days used.
+        Know what you owe from day one. Repaying early costs only the days used.
       </p>
 
       <div className="mt-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
@@ -103,7 +104,7 @@ function FixedRate() {
       <div className="mt-6 grid grid-cols-1 gap-px overflow-hidden rounded-[10px] border border-line bg-line sm:grid-cols-2">
         <div className="bg-ink-2 p-5">
           <div className="text-[12px] text-fg-3">Borrowers</div>
-          <div className="mt-2 text-[14px] text-fg">Cash against NVDA, SPY or QQQ without selling. The rate does not float.</div>
+          <div className="mt-2 text-[14px] text-fg">Cash against your stock without selling. The rate never floats.</div>
         </div>
         <div className="bg-ink-2 p-5">
           <div className="text-[12px] text-fg-3">Lenders</div>
@@ -119,13 +120,11 @@ function GapGuardCell() {
   const model = gapModel(m.gaps, m.risk.liqLtvBps);
   const configured = m.risk.weekendLtvBps;
   const enforced = Math.min(configured, model.weekendLtv);
-  const tightens = model.weekendLtv < configured;
   return (
     <div className="p-6 md:p-10">
       <h3 className="text-[20px] font-medium tracking-[-0.01em] text-fg">GapGuard, in Rust on Arbitrum Stylus</h3>
       <p className="mt-3 max-w-[48ch] text-[14px] leading-relaxed text-fg-2">
-        Learns how far each stock jumps over the weekend, from real Chainlink prices. It tightens the limit and prices
-        the weekend premium Boost earns.
+        Learns each stock&apos;s weekend jumps. Sets the weekend limit and the premium.
       </p>
       <div className="mt-7">
         <GapBars gaps={m.gaps} height={160} />
@@ -147,11 +146,9 @@ function GapGuardCell() {
           </div>
         ))}
       </dl>
-      <p className="mt-4 text-[12.5px] leading-relaxed text-fg-3">
-        {tightens
-          ? `Recent gaps are large, so GapGuard pulls the weekend limit below the configured ${configured / 100}%.`
-          : `Recent NVDA gaps are small, so the configured ${configured / 100}% holds. Larger gaps would pull it lower.`}
-      </p>
+      <Link href="/docs#gapguard" className="mt-4 inline-block text-[13px] text-fg-3 transition-colors hover:text-glow">
+        How GapGuard works →
+      </Link>
     </div>
   );
 }
@@ -160,7 +157,7 @@ const SESSION_ROWS: [Session, string][] = [
   ["Live", "Fresh prices. The full weekday limit applies."],
   ["Closing", "The final 4 hours. The limit glides to the weekend level."],
   ["Closed", "Feeds frozen. Repay and add collateral only."],
-  ["Halted", "Corporate action, sequencer outage or USDG off its peg by more than 2%. No new debt, no liquidations."],
+  ["Halted", "Corporate action, outage or USDG depeg. No new debt, no liquidations."],
 ];
 
 function PhaselockCell() {
@@ -168,7 +165,7 @@ function PhaselockCell() {
     <div className="p-6 md:p-10">
       <h3 className="text-[20px] font-medium tracking-[-0.01em] text-fg">Phaselock oracle</h3>
       <p className="mt-3 max-w-[48ch] text-[14px] leading-relaxed text-fg-2">
-        Chainlink prices, quoted in USDG and locked to the US market calendar. Every action checks the session first.
+        Chainlink prices, locked to the US market calendar.
       </p>
       <ul className="mt-6 divide-y divide-line border-y border-line">
         {SESSION_ROWS.map(([s, d]) => (

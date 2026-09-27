@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Afterglow favicon: the small-size cut of the mark on a dark tile, so it reads on light and dark tabs. -->
+  <rect width="64" height="64" rx="14" fill="#0a0a0b"/>
+  <rect x="0.5" y="0.5" width="63" height="63" rx="13.5" fill="none" stroke="#e9a15e" stroke-opacity="0.2"/>
+  <g fill="#e9a15e">
+    <path d="M8 40A24 24 0 0 1 56 40A25.44 25.44 0 0 0 8 40Z"/>
+    <path d="M20 40A12 12 0 0 1 44 40Z"/>
+    <rect x="8" y="43.5" width="48" height="5"/>
+  </g>
+</svg>

@@ -17,6 +17,13 @@ const display = Cormorant_Garamond({
 export const metadata: Metadata = {
   title: "Afterglow",
   description: "Fixed-rate USDG credit lines against tokenized stocks, on Robinhood Chain.",
+  // app/icon.svg and app/apple-icon.png are picked up by Next's file conventions.
+  openGraph: {
+    title: "Afterglow",
+    description: "Fixed-rate USDG credit lines against tokenized stocks, on Robinhood Chain.",
+    siteName: "Afterglow",
+    type: "website",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
