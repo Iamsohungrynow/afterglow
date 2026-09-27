@@ -1,1 +1,28 @@
-{}
+{
+  "46630": {
+    "chainId": 46630,
+    "gapGuard": "0x0000000000000000000000000000000000000000",
+    "markets": {
+      "AMZN": {
+        "boostToken": "0xc672E7bA0C845F05e500F8Df6D4e1115358CB6E4",
+        "feed": "0xCAae6b97E49c506A9160DC798097a3daa83d87c0",
+        "market": "0xc79596408C489E96aD2569f4C0a8b6c0510EFc72",
+        "protectedToken": "0x600890F67B6137804FAd0503C09Ed24bae2007a2",
+        "token": "0x5884aD2f920c162CFBbACc88C9C51AA75eC09E02",
+        "tranches": "0x1686BB3F830b4644116971E754C34B2bE920E7eb"
+      },
+      "TSLA": {
+        "boostToken": "0x82B16158c510370e821029b47D8f68A24bd1333E",
+        "feed": "0x33138fd30e5bB7091370cd0A75454a25F676c097",
+        "market": "0x9e663415249e042DC848Ec4d9764E21C3D5C1C12",
+        "protectedToken": "0x29583F5e944C2EC33f048bd36868Beff4c2034bD",
+        "token": "0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E",
+        "tranches": "0xe0656B3E12B03Ff4CD9799fBEb9131d933a349F2"
+      }
+    },
+    "maturity": 1793304000,
+    "oracle": "0xf9E4eC817db063Cb23cA6C58Ec149b8D7A3803Bc",
+    "usdg": "0x7E955252E15c84f5768B83c41a71F9eba181802F",
+    "usdgFeed": "0x1931a1DEC7e8D5B18ADeE313FE117D2D8aEd9eC8"
+  }
+}

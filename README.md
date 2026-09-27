@@ -1,5 +1,7 @@
 # Afterglow
 
+**Live:** https://afterglow-credit.vercel.app
+
 Afterglow is a fixed-rate USDG credit line against tokenized stocks on Robinhood Chain. The market closes,
 but your credit line doesn't: a market-hours oracle and a Stylus gap-risk model keep weekends safe, and lenders
 choose Protected yield or Boost yield that absorbs losses first.

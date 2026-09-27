@@ -6,7 +6,7 @@ import { useNow } from "@/hooks/useNow";
 import { useMarket } from "@/hooks/useMarket";
 import { usePosition } from "@/hooks/usePosition";
 import { useLivePrices } from "@/hooks/useLivePrices";
-import { marketsFor } from "@/lib/markets";
+import { deployedChains, marketsFor } from "@/lib/markets";
 import { useAfterglowAccount } from "./AccountProvider";
 import { TopBar } from "./TopBar";
 import { MarketBar } from "./MarketBar";
@@ -19,14 +19,16 @@ export function Terminal() {
   const now = useNow();
   const { isConnected } = useAccount();
   const { chainId, owner } = useAfterglowAccount();
-  const symbols = marketsFor(isConnected ? chainId : undefined);
+  // Without a wallet, show the deployed testnet markets (live contract state) rather than a preview.
+  const readChain = isConnected ? chainId : deployedChains()[0]?.id;
+  const symbols = marketsFor(readChain);
   const [symbol, setSymbol] = useState(symbols[0]);
   useEffect(() => {
     if (!symbols.includes(symbol)) setSymbol(symbols[0]);
   }, [symbols, symbol]);
 
-  const { data: m } = useMarket(symbol, isConnected ? chainId : undefined, now);
-  const { data: pos } = usePosition(m, chainId, owner);
+  const { data: m } = useMarket(symbol, readChain, now);
+  const { data: pos } = usePosition(m, readChain, owner);
   const { data: prices } = useLivePrices();
 
   return (
