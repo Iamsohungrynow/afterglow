@@ -2,89 +2,41 @@ import Link from "next/link";
 import { ShieldCheck, TrendUp } from "@phosphor-icons/react/dist/ssr";
 import type { Icon } from "@phosphor-icons/react";
 import { Reveal } from "./Reveal";
-import { BASE, BOOST_APY, BOOST_FROM_PREMIUM, TARGET } from "./example";
+import { BOOST_APY, TARGET } from "./example";
 
-interface Strategy {
+interface Vault {
   icon: Icon;
   name: string;
   yield: string;
-  yieldNote: string;
-  pitch: string;
-  rows: [string, string][];
+  line: string;
   hot?: boolean;
 }
 
-const STRATEGIES: Strategy[] = [
-  {
-    icon: ShieldCheck,
-    name: "Protected",
-    yield: `${TARGET}%`,
-    yieldNote: "fixed target, paid first",
-    pitch: "Be shielded from the weekend.",
-    rows: [
-      ["Earns", "Borrower interest, paid before Boost"],
-      ["Risk", "Only after Boost is wiped out"],
-    ],
-  },
-  {
-    icon: TrendUp,
-    name: "Boost",
-    yield: `~${BOOST_APY.toFixed(0)}%`,
-    yieldNote: `fully lent, ~${BOOST_FROM_PREMIUM.toFixed(0)} points from premiums`,
-    pitch: "Get paid to cover the weekend.",
-    rows: [
-      ["Earns", `Every weekend premium, plus the interest above Protected's ${TARGET}%`],
-      ["Risk", "Takes weekend gap losses first"],
-    ],
-    hot: true,
-  },
+const VAULTS: Vault[] = [
+  { icon: ShieldCheck, name: "Protected", yield: `${TARGET}%`, line: "Paid first. Shielded from weekend losses." },
+  { icon: TrendUp, name: "Boost", yield: `~${BOOST_APY.toFixed(0)}%`, line: "Earns every weekend premium. Takes losses first.", hot: true },
 ];
 
+/** The two lender vaults, one number and one line each. */
 export function Strategies() {
   return (
     <div>
-      {/* Where the money goes */}
-      <Reveal className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[14px] text-fg-2">
-        <span className="rounded-[6px] border border-line-strong px-3 py-1.5 text-fg">
-          Borrowers pay <span className="num">{BASE}%</span> fixed + a weekend premium
-        </span>
-        <span aria-hidden className="text-fg-3">→</span>
-        <span className="rounded-[6px] border border-line-strong px-3 py-1.5">
-          Protected takes <span className="num text-fg">{TARGET}%</span> first
-        </span>
-        <span aria-hidden className="text-fg-3">→</span>
-        <span className="rounded-[6px] border border-glow/50 px-3 py-1.5">
-          Boost keeps <span className="text-glow">the rest, premiums included</span>
-        </span>
-      </Reveal>
-
-      <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-line bg-line md:grid-cols-2">
-        {STRATEGIES.map((s, i) => (
-          <Reveal key={s.name} delay={i * 0.06} className="bg-ink-2">
+      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-line bg-line sm:grid-cols-2">
+        {VAULTS.map((v, i) => (
+          <Reveal key={v.name} delay={i * 0.06} className="bg-ink-2">
             <div className="flex h-full flex-col p-6 md:p-8">
               <div className="flex items-center gap-2 text-[15px] text-fg">
-                <s.icon size={17} className={s.hot ? "text-glow" : "text-fg-2"} />
-                {s.name}
+                <v.icon size={17} className={v.hot ? "text-glow" : "text-fg-2"} />
+                {v.name}
               </div>
-              <p className="mt-2 text-[22px] font-medium tracking-[-0.015em] text-fg md:text-[26px]">{s.pitch}</p>
-              <div className="mt-6 flex items-baseline gap-3">
-                <span className={`num text-[44px] leading-none md:text-[52px] ${s.hot ? "text-glow" : "text-fg"}`}>{s.yield}</span>
-                <span className="text-[13px] text-fg-3">{s.yieldNote}</span>
-              </div>
-              <dl className="mt-7 divide-y divide-line border-y border-line">
-                {s.rows.map(([k, v]) => (
-                  <div key={k} className="grid grid-cols-[72px_1fr] gap-4 py-3">
-                    <dt className="text-[12.5px] text-fg-3">{k}</dt>
-                    <dd className="text-[13.5px] leading-relaxed text-fg-2">{v}</dd>
-                  </div>
-                ))}
-              </dl>
+              <div className={`num mt-6 text-[56px] leading-none md:text-[72px] ${v.hot ? "text-glow" : "text-fg"}`}>{v.yield}</div>
+              <p className="mt-5 text-[15.5px] leading-relaxed text-fg-2">{v.line}</p>
             </div>
           </Reveal>
         ))}
       </div>
       <p className="mt-4 text-[12.5px] leading-relaxed text-fg-3">
-        Example yields, fully lent.{" "}
+        Example, fully lent.{" "}
         <Link href="/docs#lender-vaults" className="transition-colors hover:text-glow">
           How the vaults work →
         </Link>

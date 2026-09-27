@@ -4,21 +4,16 @@ import { Providers } from "@/components/Providers";
 import { Wordmark } from "@/components/Wordmark";
 import { Hero } from "@/components/landing/Hero";
 import { WeekSimulator } from "@/components/landing/WeekSimulator";
-import { Waterfall } from "@/components/landing/Waterfall";
 import { Mechanism } from "@/components/landing/Mechanism";
 import { Problem } from "@/components/landing/Problem";
 import { Strategies } from "@/components/landing/Strategies";
 import { Reveal } from "@/components/landing/Reveal";
 import { LaunchButton, SourceButton, REPO } from "@/components/landing/LaunchButton";
+import { MARKETS } from "@/lib/markets";
 
-const BUILT_ON: [string, string][] = [
-  ["Robinhood Chain", "settlement and stock tokens"],
-  ["Arbitrum Stylus", "GapGuard, written in Rust"],
-  ["Paxos USDG", "the asset you borrow and lend"],
-  ["Chainlink", "stock and USDG prices"],
-  ["ZeroDev", "smart accounts, sponsored gas"],
-  ["OpenZeppelin", "contract libraries"],
-];
+// Borrow limits for single stocks, from the NVDA market's risk params.
+const WEEKDAY_LTV = MARKETS.NVDA.risk.baseLtvBps / 100;
+const WEEKEND_LTV = MARKETS.NVDA.risk.weekendLtvBps / 100;
 
 const SAFETY = [
   "Repay can never be paused",
@@ -35,6 +30,15 @@ function DocsLink({ href, children }: { href: string; children: React.ReactNode 
     </Link>
   );
 }
+
+const BUILT_ON: [string, string][] = [
+  ["Robinhood Chain", "settlement and stock tokens"],
+  ["Arbitrum Stylus", "GapGuard, written in Rust"],
+  ["Paxos USDG", "the asset you borrow and lend"],
+  ["Chainlink", "stock and USDG prices"],
+  ["ZeroDev", "smart accounts, sponsored gas"],
+  ["OpenZeppelin", "contract libraries"],
+];
 
 export default function Landing() {
   return (
@@ -76,11 +80,11 @@ export default function Landing() {
           <div className="mx-auto max-w-[1400px] px-6 py-24 md:py-28">
             <Reveal className="grid grid-cols-1 gap-6 md:grid-cols-12 md:items-end">
               <h2 className="text-[34px] font-medium leading-[1.05] tracking-[-0.025em] text-fg md:col-span-7 md:text-[48px]">
-                Borrow against your stock. Your limit follows the market clock.
+                <span className="num">{WEEKDAY_LTV}%</span> on weekdays. <span className="num">{WEEKEND_LTV}%</span> into the weekend.
               </h2>
               <div className="md:col-span-5 md:justify-self-end">
                 <p className="max-w-[46ch] text-[15.5px] leading-relaxed text-fg-2">
-                  Keep your shares, borrow USDG at a fixed rate. Drag the week.
+                  Borrowing pauses until prices return. Repaying never does.
                 </p>
                 <div className="mt-3">
                   <DocsLink href="/docs#borrowing">How borrowing works</DocsLink>
@@ -93,27 +97,16 @@ export default function Landing() {
           </div>
         </section>
 
-        {/* Who takes the loss */}
+        {/* Lend */}
         <section id="lenders" className="scroll-mt-16 border-t border-line">
-          <div className="mx-auto max-w-[1400px] px-6 py-24 md:py-28">
-            <Reveal className="grid grid-cols-1 gap-6 md:grid-cols-12 md:items-end">
-              <h2 className="text-[34px] font-medium leading-[1.05] tracking-[-0.025em] text-fg md:col-span-7 md:text-[48px]">
-                Two vaults. Pick your side of the weekend.
+          <div className="mx-auto grid max-w-[1400px] grid-cols-1 gap-12 px-6 py-24 md:py-28 lg:grid-cols-12 lg:items-center">
+            <Reveal className="lg:col-span-5">
+              <h2 className="max-w-[14ch] text-[34px] font-medium leading-[1.05] tracking-[-0.025em] text-fg md:text-[48px]">
+                Lenders pick a side of the weekend.
               </h2>
-              <p className="max-w-[46ch] text-[15.5px] leading-relaxed text-fg-2 md:col-span-5 md:justify-self-end">
-                Same borrowers, same fixed rate. Choose how much weekend risk you carry.
-              </p>
             </Reveal>
-            <div className="mt-12">
+            <div className="lg:col-span-7">
               <Strategies />
-            </div>
-            <Reveal className="mt-20 max-w-[760px]">
-              <h3 className="text-[24px] font-medium tracking-[-0.02em] text-fg md:text-[30px]">
-                A stock gaps down on Monday. Who pays?
-              </h3>
-            </Reveal>
-            <div className="mt-8">
-              <Waterfall />
             </div>
           </div>
         </section>
