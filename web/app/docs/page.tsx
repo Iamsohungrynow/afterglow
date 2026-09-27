@@ -4,7 +4,8 @@ import { ArrowUpRight, GithubLogo } from "@phosphor-icons/react/dist/ssr";
 import { Wordmark } from "@/components/Wordmark";
 import { LaunchButton, REPO } from "@/components/landing/LaunchButton";
 import { DocsToc, DocsTocMobile, type TocItem } from "@/components/docs/DocsToc";
-import { ContractTables, DocSection, Formula, H3, Q, Stat, Table } from "@/components/docs/DocsBits";
+import { ContractTables, DocSection, Figure, Formula, H3, Q, Stat, Table } from "@/components/docs/DocsBits";
+import { Waterfall } from "@/components/docs/Waterfall";
 import { deploymentFor } from "@/lib/markets";
 
 export const metadata: Metadata = {
@@ -248,6 +249,14 @@ export default function Docs() {
                   Boost tops up Protected&apos;s target from its own share. Boost&apos;s yield moves with utilisation; Protected&apos;s
                   does not, until Boost runs out.
                 </p>
+                <H3>Who pays for a Monday gap</H3>
+                <p>
+                  Say a stock gaps down on Monday so hard that a loan&apos;s collateral no longer covers it. Drag the size of that
+                  loss: Boost absorbs it first, and Protected is only touched once Boost is gone.
+                </p>
+                <Figure>
+                  <Waterfall />
+                </Figure>
               </DocSection>
 
               <DocSection id="weekend-sweep" n={7} title="Weekend sweep">

@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { ShieldCheck, TrendUp } from "@phosphor-icons/react";
-import { POOL_APR, TARGET as TARGET_PCT } from "./example";
+import { POOL_APR, TARGET as TARGET_PCT } from "@/components/landing/example";
 
 // Sample vault. Boost must be at least 20% of the vault; here it is 25%.
 const BOOST = 25_000;
@@ -47,7 +47,7 @@ export function Waterfall() {
   return (
     <div className="grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-line bg-line md:grid-cols-12">
       {/* Controls and numbers */}
-      <div className="bg-ink-2 p-6 md:col-span-7 md:p-8">
+      <div className="@container bg-ink-2 p-6 md:col-span-7 md:p-8">
         <div className="flex items-baseline justify-between gap-4">
           <label htmlFor="gap-loss" className="text-[14px] text-fg">
             Monday gap loss
@@ -100,7 +100,7 @@ export function Waterfall() {
           <span>{fmt(MAX_LOSS)}</span>
         </div>
 
-        <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden rounded-[10px] border border-line bg-line sm:grid-cols-2">
+        <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden rounded-[10px] border border-line bg-line @xl:grid-cols-2">
           <Tranche
             icon={TrendUp}
             name="Boost"
@@ -201,7 +201,7 @@ function Tranche({
         </span>
         <span className={`whitespace-nowrap text-[12px] ${hot ? (name === "Boost" ? "text-glow" : "text-fg") : "text-fg-3"}`}>{label}</span>
       </div>
-      <div className="num mt-3 text-[22px] leading-none text-fg">
+      <div className="num mt-3 whitespace-nowrap text-[22px] leading-none text-fg">
         {fmt(left)}
         <span className="text-fg-3"> / {fmt(size)}</span>
       </div>

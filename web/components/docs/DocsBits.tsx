@@ -8,10 +8,20 @@ export function DocSection({ id, n, title, children }: { id: string; n: number; 
       <h2 id={`${id}-h`} className="mt-2 text-[26px] font-medium leading-tight tracking-[-0.02em] text-fg md:text-[30px]">
         {title}
       </h2>
-      <div className="mt-6 max-w-[68ch] space-y-5 text-[15.5px] leading-[1.7] text-fg-2 [&_strong]:font-medium [&_strong]:text-fg">
+      <div className="mt-6 space-y-5 text-[15.5px] leading-[1.7] text-fg-2 [&_strong]:font-medium [&_strong]:text-fg [&>*]:max-w-[68ch] [&>.doc-wide]:max-w-none">
         {children}
       </div>
     </section>
+  );
+}
+
+/** An interactive figure that may run wider than the reading column, with an optional caption. */
+export function Figure({ children, caption }: { children: React.ReactNode; caption?: React.ReactNode }) {
+  return (
+    <figure className="doc-wide pt-2 leading-normal">
+      {children}
+      {caption && <figcaption className="mt-3 text-[12.5px] leading-relaxed text-fg-3">{caption}</figcaption>}
+    </figure>
   );
 }
 
