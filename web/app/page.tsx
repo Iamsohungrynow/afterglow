@@ -8,6 +8,7 @@ import { Mechanism } from "@/components/landing/Mechanism";
 import { Problem } from "@/components/landing/Problem";
 import { Strategies } from "@/components/landing/Strategies";
 import { Reveal } from "@/components/landing/Reveal";
+import { BuiltOn } from "@/components/landing/BuiltOn";
 import { LaunchButton, SourceButton, REPO } from "@/components/landing/LaunchButton";
 import { MARKETS } from "@/lib/markets";
 
@@ -30,15 +31,6 @@ function DocsLink({ href, children }: { href: string; children: React.ReactNode 
     </Link>
   );
 }
-
-const BUILT_ON: [string, string][] = [
-  ["Robinhood Chain", "settlement and stock tokens"],
-  ["Arbitrum Stylus", "GapGuard, written in Rust"],
-  ["Paxos USDG", "the asset you borrow and lend"],
-  ["Chainlink", "stock and USDG prices"],
-  ["ZeroDev", "smart accounts, sponsored gas"],
-  ["OpenZeppelin", "contract libraries"],
-];
 
 export default function Landing() {
   return (
@@ -144,17 +136,7 @@ export default function Landing() {
         {/* Built on */}
         <section className="border-t border-line">
           <div className="mx-auto max-w-[1400px] px-6 py-14">
-            <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-center">
-              <p className="text-[14px] text-fg-3 lg:col-span-2">Built on</p>
-              <ul className="grid grid-cols-2 gap-y-6 sm:grid-cols-3 lg:col-span-10 lg:grid-cols-6">
-                {BUILT_ON.map(([name, role]) => (
-                  <li key={name} className="border-l border-line-strong pl-4 transition-colors hover:border-glow">
-                    <div className="whitespace-nowrap text-[15px] text-fg">{name}</div>
-                    <div className="mt-1 text-[12px] leading-snug text-fg-3">{role}</div>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <BuiltOn />
           </div>
         </section>
 
