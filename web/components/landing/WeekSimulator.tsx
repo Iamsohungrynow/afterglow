@@ -239,7 +239,7 @@ export function WeekSimulator() {
             </div>
           </div>
           <div aria-hidden>
-            <WeekClock now={t} risk={risk} />
+            <WeekClock now={t} risk={risk} hover={false} />
           </div>
         </div>
       </div>
