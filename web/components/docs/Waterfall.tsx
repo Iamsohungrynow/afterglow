@@ -21,7 +21,6 @@ export function Waterfall() {
   const [loss, setLoss] = useState(12_000);
   const spring = useReducedMotion() ? INSTANT : SPRING;
   const areaRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const dragging = useRef(false);
 
   const boostLoss = Math.min(loss, BOOST);
@@ -59,7 +58,6 @@ export function Waterfall() {
         </div>
 
         <input
-          ref={inputRef}
           id="gap-loss"
           type="range"
           min={0}
@@ -70,6 +68,7 @@ export function Waterfall() {
           aria-valuetext={`${fmt(loss)} USDG loss. ${boostLabel}, ${protLabel}.`}
           className="peer sr-only"
         />
+        {/* Pointer drags never focus the hidden input, so the outline only shows for keyboard focus. */}
         <div
           ref={areaRef}
           className="relative mt-7 h-10 cursor-ew-resize select-none rounded-[6px] outline-offset-4 peer-focus-visible:outline-2 peer-focus-visible:outline-glow"
@@ -79,7 +78,6 @@ export function Waterfall() {
             dragging.current = true;
             e.currentTarget.setPointerCapture(e.pointerId);
             setFromPointer(e.clientX);
-            inputRef.current?.focus({ preventScroll: true });
           }}
           onPointerMove={(e) => dragging.current && setFromPointer(e.clientX)}
           onPointerUp={() => (dragging.current = false)}
@@ -120,7 +118,7 @@ export function Waterfall() {
 
       {/* The stack */}
       <div className="relative bg-ink-2 p-6 md:col-span-5 md:p-8">
-        <div className="flex h-[340px] gap-5 md:h-full md:min-h-[420px]">
+        <div className="flex h-[260px] gap-5 sm:h-[340px] md:h-full md:min-h-[420px]">
           <div className="relative flex w-[46%] max-w-[180px] flex-col overflow-hidden rounded-[10px] border border-line-strong">
             {/* Loss eats from the top */}
             <motion.div
@@ -148,23 +146,23 @@ export function Waterfall() {
             />
           </div>
 
-          {/* Labels beside the stack */}
+          {/* Labels beside the stack: one line each on phones, where the stack is short. */}
           <div className="relative flex flex-1 flex-col text-[12.5px]">
             <motion.div className="shrink-0 overflow-hidden" animate={{ height: `${lossPct}%` }} transition={spring}>
               {loss > 0 && (
-                <div className="pt-1">
+                <div className="flex flex-wrap gap-x-2 pt-1 sm:block">
                   <div className="text-fg-3">Loss</div>
                   <div className="num text-fg-2">{fmt(loss)}</div>
                 </div>
               )}
             </motion.div>
             <motion.div className="shrink-0 overflow-hidden" animate={{ height: `${(boostLeft / TOTAL) * 100}%` }} transition={spring}>
-              <div className="pt-1">
+              <div className="flex flex-wrap gap-x-2 pt-1 sm:block">
                 <div className="text-glow">Boost</div>
                 <div className="num text-fg-2">{fmt(boostLeft)}</div>
               </div>
             </motion.div>
-            <div className="flex-1 pt-1">
+            <div className="flex flex-1 flex-wrap content-start gap-x-2 pt-1 sm:block">
               <div className="text-fg">Protected</div>
               <div className="num text-fg-2">{fmt(protLeft)}</div>
             </div>

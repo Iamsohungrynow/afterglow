@@ -1,4 +1,5 @@
 import { deploymentFor } from "@/lib/markets";
+import { ScrollX } from "./ScrollX";
 
 /** One numbered docs section with a reading-width body. */
 export function DocSection({ id, n, title, children }: { id: string; n: number; title: string; children: React.ReactNode }) {
@@ -40,7 +41,7 @@ export function Formula({ children }: { children: React.ReactNode }) {
 
 export function Table({ head, rows, numCols = [] }: { head: string[]; rows: React.ReactNode[][]; numCols?: number[] }) {
   return (
-    <div className="overflow-x-auto rounded-[10px] border border-line">
+    <ScrollX className="rounded-[10px] border border-line">
       <table className={`w-full border-collapse text-left text-[13.5px] leading-snug ${head.length > 3 ? "min-w-[600px]" : ""}`}>
         <thead>
           <tr className="border-b border-line bg-ink-2">
@@ -63,7 +64,7 @@ export function Table({ head, rows, numCols = [] }: { head: string[]; rows: Reac
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollX>
   );
 }
 

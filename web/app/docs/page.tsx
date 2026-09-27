@@ -6,12 +6,39 @@ import { LaunchButton, REPO } from "@/components/landing/LaunchButton";
 import { DocsToc, DocsTocMobile, type TocItem } from "@/components/docs/DocsToc";
 import { ContractTables, DocSection, Figure, Formula, H3, Q, Stat, Table } from "@/components/docs/DocsBits";
 import { Waterfall } from "@/components/docs/Waterfall";
-import { deploymentFor } from "@/lib/markets";
+import { deploymentFor, gapModel } from "@/lib/markets";
+import {
+  BASE,
+  BOOST_APY,
+  BOOST_FROM_PREMIUM,
+  EXAMPLE_MARKET,
+  EXAMPLE_SYMBOL,
+  POOL_APR,
+  PREMIUM_APR,
+  PREMIUM_BP,
+  SIGMA_BPS,
+  TARGET,
+} from "@/components/landing/example";
+
+const DESCRIPTION = "How Afterglow works: fixed-rate USDG loans on tokenized stocks that stay open over the weekend.";
 
 export const metadata: Metadata = {
   title: "Docs · Afterglow",
-  description: "How Afterglow works: fixed-rate USDG loans on tokenized stocks that stay open over the weekend.",
+  description: DESCRIPTION,
+  openGraph: {
+    title: "Docs · Afterglow",
+    description: DESCRIPTION,
+    url: "/docs",
+    siteName: "Afterglow",
+    type: "article",
+  },
+  twitter: { card: "summary_large_image", title: "Docs · Afterglow", description: DESCRIPTION },
 };
+
+// Worked examples, computed from the TSLA market's measured gaps (the same numbers as the landing page).
+const EX_TERM_WEEKENDS = 4;
+const exModel = gapModel(EXAMPLE_MARKET.gaps, EXAMPLE_MARKET.risk.liqLtvBps);
+const exBinds = exModel.weekendLtv < EXAMPLE_MARKET.risk.weekendLtvBps;
 
 const TOC: TocItem[] = [
   { id: "overview", label: "Overview" },
@@ -86,7 +113,7 @@ export default function Docs() {
               <DocSection id="overview" n={1} title="Overview">
                 <p>
                   Afterglow is a fixed-rate USDG lending market for tokenized stocks on Robinhood Chain, an Arbitrum chain.
-                  Borrowers pledge stock tokens such as NVDA and borrow USDG at a fixed rate until a fixed maturity.
+                  Borrowers pledge stock tokens such as TSLA and borrow USDG at a fixed rate until a fixed maturity.
                 </p>
                 <p>
                   Lenders deposit USDG and pick a side: <strong>Protected</strong>, paid first, or <strong>Boost</strong>,
@@ -97,9 +124,10 @@ export default function Docs() {
 
               <DocSection id="weekend-problem" n={2} title="The weekend problem">
                 <p>
-                  Stock tokens move on-chain around the clock, but their price feeds follow the US market. Chainlink stops
-                  printing at the Friday close, <strong>20:00 New York</strong>, and resumes after{" "}
-                  <strong>Sunday 20:00 New York</strong>. For about two days every lender is looking at a stale price.
+                  Stock tokens move on-chain around the clock, but their price feeds follow the stock market. Chainlink stops
+                  printing on <strong>Friday 20:00 New York, when 24/5 trading closes</strong>, and resumes after{" "}
+                  <strong>Sunday 20:00 New York</strong>, when it reopens. For about two days every lender is looking at a
+                  stale price.
                 </p>
                 <p>On-chain stock lenders handle that gap in one of two ways today:</p>
                 <ul className="list-disc space-y-2 pl-5 marker:text-fg-3">
@@ -164,7 +192,7 @@ export default function Docs() {
                   head={["Collateral", "Weekday LTV", "Weekend LTV", "Liquidation LTV", "Liquidator bonus"]}
                   numCols={[1, 2, 3, 4]}
                   rows={[
-                    ["Stocks (NVDA, TSLA, AMZN)", "55%", "45%", "65%", "7%"],
+                    ["Stocks (TSLA, AMZN, NVDA)", "55%", "45%", "65%", "7%"],
                     ["ETFs (SPY, QQQ)", "70%", "60%", "77%", "5%"],
                   ]}
                 />
@@ -194,8 +222,19 @@ export default function Docs() {
                 </p>
                 <p>
                   The market uses the <strong>lower</strong> of its configured weekend LTV and GapGuard&apos;s, so the model can
-                  only tighten the limit. If GapGuard fails or is unset, the configured value applies. NVDA&apos;s recent gaps
-                  are calm, so today its configured 45% holds.
+                  only tighten the limit. If GapGuard fails or is unset, the configured value applies.{" "}
+                  {exBinds ? (
+                    <>
+                      {EXAMPLE_SYMBOL}&apos;s recent gaps are wide enough that the model&apos;s{" "}
+                      <span className="num">{(exModel.weekendLtv / 100).toFixed(2)}%</span> applies today.
+                    </>
+                  ) : (
+                    <>
+                      {EXAMPLE_SYMBOL}&apos;s recent gaps are calm (model limit{" "}
+                      <span className="num">{(exModel.weekendLtv / 100).toFixed(2)}%</span>), so today its configured{" "}
+                      <span className="num">{EXAMPLE_MARKET.risk.weekendLtvBps / 100}%</span> holds.
+                    </>
+                  )}
                 </p>
               </DocSection>
 
@@ -215,13 +254,16 @@ export default function Docs() {
                   Because Protected&apos;s target is fixed, all of the premium ends up with Boost.
                 </p>
                 <Table
-                  head={["NVDA example", "Value"]}
+                  head={[`${EXAMPLE_SYMBOL} example`, "Value"]}
                   numCols={[1]}
                   rows={[
-                    ["Weekend gap σ", "0.78%"],
-                    ["Premium per weekend", "7.8 bp"],
-                    ["As a yearly rate", "≈ 4.1%"],
-                    ["28-day loan (4 weekends)", "0.31% of the amount"],
+                    ["Weekend gap σ", `${(SIGMA_BPS / 100).toFixed(2)}%`],
+                    ["Premium per weekend", `${PREMIUM_BP.toFixed(1)} bp`],
+                    ["As a yearly rate", `≈ ${PREMIUM_APR.toFixed(1)}%`],
+                    [
+                      `28-day loan (${EX_TERM_WEEKENDS} weekends)`,
+                      `${((PREMIUM_BP * EX_TERM_WEEKENDS) / 100).toFixed(2)}% of the amount`,
+                    ],
                   ]}
                 />
               </DocSection>
@@ -240,9 +282,10 @@ export default function Docs() {
                   ]}
                 />
                 <p>
-                  Example: a fully lent vault with 25% in Boost earns the 6% base rate plus NVDA&apos;s premium, about 10% in
-                  total. Protected takes its <span className="num text-fg">5%</span>. Boost earns about{" "}
-                  <span className="num text-glow">25%</span>, of which about 16 points are weekend premium.
+                  Example: a fully lent vault with 25% in Boost earns the {BASE}% base rate plus {EXAMPLE_SYMBOL}&apos;s premium,
+                  about {POOL_APR.toFixed(0)}% in total. Protected takes its <span className="num text-fg">{TARGET}%</span>. Boost
+                  earns about <span className="num text-glow">{BOOST_APY.toFixed(0)}%</span>, of which about{" "}
+                  {BOOST_FROM_PREMIUM.toFixed(0)} points are weekend premium.
                 </p>
                 <p>
                   The honest caveat: those figures assume the vault is fully lent. When little is lent, interest is thin, and
