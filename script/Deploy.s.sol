@@ -11,6 +11,7 @@ import {AggregatorV3Interface} from "../src/interfaces/AggregatorV3Interface.sol
 import {IGapGuard} from "../src/interfaces/IGapGuard.sol";
 import {DemoPriceFeed} from "../src/demo/DemoPriceFeed.sol";
 import {DemoStockToken} from "../src/demo/DemoStockToken.sol";
+import {DemoSavingsVault} from "../src/demo/DemoSavingsVault.sol";
 import {AfterglowTranches} from "../src/AfterglowTranches.sol";
 import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 
@@ -25,7 +26,10 @@ import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 ///   forge script script/Deploy.s.sol --rpc-url robinhood_testnet --account deployer --broadcast
 ///
 /// Optional env: RATE_WAD (default 0.08e18), TERM_DAYS (28), SUPPLY_CAP (loan-token units),
-/// GAP_GUARD (address of the deployed GapGuard Stylus contract, wired into every market).
+/// GAP_GUARD (address of the deployed GapGuard Stylus contract, wired into every market),
+/// ORACLE (reuse a deployed PhaselockOracle: its USDG feed and any asset feeds it already has are kept),
+/// IDLE_VAULT (ERC-4626 USDG savings vault for the weekend sweep; testnets deploy a DemoSavingsVault
+/// when unset), SAVINGS_RESERVE (USDG units the deployer sends to a new DemoSavingsVault as its yield reserve).
 /// Addresses are written to deployments/<chainId>.json on broadcast.
 contract Deploy is Script {
     using Strings for uint256;
@@ -51,6 +55,7 @@ contract Deploy is Script {
         uint256 rateWad;
         uint256 supplyCap;
         address gapGuard;
+        address idleVault;
     }
 
     struct Deployed {
@@ -68,20 +73,35 @@ contract Deploy is Script {
         uint256 defaultCap;
         address stableFeed;
         Params memory p;
-        (p.usdg, stableFeed, assets, defaultCap) = _config(block.chainid);
+        bool demoSavings;
+        (p.usdg, stableFeed, assets, defaultCap, demoSavings) = _config(block.chainid);
         p.rateWad = vm.envOr("RATE_WAD", uint256(0.08e18));
         p.supplyCap = vm.envOr("SUPPLY_CAP", defaultCap);
         p.maturity = nextThursdayClose(block.timestamp + vm.envOr("TERM_DAYS", uint256(28)) * 1 days);
         p.gapGuard = vm.envOr("GAP_GUARD", address(0));
+        p.idleVault = vm.envOr("IDLE_VAULT", address(0));
+        address reuse = vm.envOr("ORACLE", address(0));
 
         vm.startBroadcast();
         (, p.deployer,) = vm.readCallers();
 
-        oracle = new PhaselockOracle(p.deployer);
-        if (stableFeed == address(0)) {
-            stableFeed = address(new DemoPriceFeed(p.deployer, "USDG / USD (demo)", 8, 1e8));
+        if (reuse != address(0)) {
+            oracle = PhaselockOracle(reuse);
+            stableFeed = address(oracle.stableFeed());
+        } else {
+            oracle = new PhaselockOracle(p.deployer);
+            if (stableFeed == address(0)) {
+                stableFeed = address(new DemoPriceFeed(p.deployer, "USDG / USD (demo)", 8, 1e8));
+            }
+            oracle.setStableFeed(AggregatorV3Interface(stableFeed), MAX_STALENESS, DEPEG_TOLERANCE_BPS);
         }
-        oracle.setStableFeed(AggregatorV3Interface(stableFeed), MAX_STALENESS, DEPEG_TOLERANCE_BPS);
+
+        if (p.idleVault == address(0) && demoSavings) {
+            DemoSavingsVault savings = new DemoSavingsVault(IERC20(p.usdg), 0.036e18, p.deployer);
+            p.idleVault = address(savings);
+            uint256 reserve = vm.envOr("SAVINGS_RESERVE", uint256(0));
+            if (reserve != 0) IERC20(p.usdg).transfer(p.idleVault, reserve);
+        }
 
         out = new Deployed[](assets.length);
         for (uint256 i; i < assets.length; ++i) {
@@ -101,11 +121,16 @@ contract Deploy is Script {
         if (a.token == address(0)) {
             a.token = address(new DemoStockToken(string.concat(a.symbol, " (demo stock)"), a.symbol));
         }
-        address feed = a.feed;
+        // A reused oracle keeps the feed it already has for this token (e.g. one the price mirror updates).
+        (AggregatorV3Interface existing,,) = oracle.assets(a.token);
+        address feed = address(existing);
         if (feed == address(0)) {
-            feed = address(new DemoPriceFeed(p.deployer, string.concat(a.symbol, " / USD (demo)"), 8, a.demoPrice));
+            feed = a.feed;
+            if (feed == address(0)) {
+                feed = address(new DemoPriceFeed(p.deployer, string.concat(a.symbol, " / USD (demo)"), 8, a.demoPrice));
+            }
+            oracle.setAsset(a.token, AggregatorV3Interface(feed), MAX_STALENESS, true);
         }
-        oracle.setAsset(a.token, AggregatorV3Interface(feed), MAX_STALENESS, true);
 
         string memory tag = string.concat(a.symbol, "-", formatDate(p.maturity));
         AfterglowMarket market = new AfterglowMarket(
@@ -125,6 +150,7 @@ contract Deploy is Script {
             })
         );
         if (p.gapGuard != address(0)) market.setGapGuard(IGapGuard(p.gapGuard));
+        if (p.idleVault != address(0)) market.setIdleVault(IERC4626(p.idleVault));
         // Protected / Boost tranches on top of the market: senior targets 5/8 of the market rate,
         // junior must stay at least 20% of the tranche vault.
         AfterglowTranches tranches =
@@ -141,7 +167,7 @@ contract Deploy is Script {
     function _config(uint256 chainId)
         internal
         pure
-        returns (address usdg, address stableFeed, Asset[] memory assets, uint256 defaultCap)
+        returns (address usdg, address stableFeed, Asset[] memory assets, uint256 defaultCap, bool demoSavings)
     {
         AfterglowMarket.RiskParams memory stock =
             AfterglowMarket.RiskParams({baseLtvBps: 5500, weekendLtvBps: 4500, liqLtvBps: 6500, liqBonusBps: 700});
@@ -154,6 +180,7 @@ contract Deploy is Script {
             assets[0] = Asset("TSLA", 0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E, address(0), 371_7471_0000, stock);
             assets[1] = Asset("AMZN", 0x5884aD2f920c162CFBbACc88C9C51AA75eC09E02, address(0), 249_9420_0000, stock);
             defaultCap = type(uint256).max;
+            demoSavings = true;
         } else if (chainId == ROBINHOOD) {
             usdg = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
             assets = new Asset[](3);
@@ -174,6 +201,7 @@ contract Deploy is Script {
             assets[0] = Asset("NVDA", address(0), address(0), 225_6601_8707, stock);
             assets[1] = Asset("SPY", address(0), address(0), 77232802713, etf);
             defaultCap = type(uint256).max;
+            demoSavings = true;
         } else {
             revert("Deploy: unsupported chain");
         }
@@ -214,6 +242,7 @@ contract Deploy is Script {
         console.log("maturity (unix):", p.maturity, formatDate(p.maturity));
         console.log("rate (bps):", p.rateWad / 1e14);
         console.log("supply cap:", p.supplyCap);
+        console.log("idle vault:", p.idleVault);
         for (uint256 i; i < out.length; ++i) {
             console.log(string.concat(out[i].symbol, " market:"), out[i].market);
             console.log(string.concat(out[i].symbol, " feed:  "), out[i].feed);
@@ -227,6 +256,7 @@ contract Deploy is Script {
         vm.serializeAddress(root, "usdg", p.usdg);
         vm.serializeAddress(root, "usdgFeed", stableFeed);
         vm.serializeAddress(root, "gapGuard", p.gapGuard);
+        vm.serializeAddress(root, "idleVault", p.idleVault);
         vm.serializeUint(root, "maturity", p.maturity);
 
         string memory markets = "markets";

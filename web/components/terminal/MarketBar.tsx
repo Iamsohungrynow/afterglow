@@ -7,7 +7,7 @@ import { fmt, fmtDate, fmtPct, daysLeft } from "@/lib/format";
 import { fmtDuration, nextTransition } from "@/lib/session";
 import { SessionChip } from "@/components/SessionChip";
 import { Chip, TokenMark } from "@/components/ui/primitives";
-import type { MarketView } from "@/hooks/useMarket";
+import { utilisation, type MarketView } from "@/hooks/useMarket";
 
 /** Market header row: pair selector on the left, one line of compact labelled stats. */
 export function MarketBar({
@@ -28,7 +28,8 @@ export function MarketBar({
   const [open, setOpen] = useState(false);
   const next = now ? nextTransition(now) : undefined;
   const live = m?.mode === "live";
-  const util = m?.totalAssets ? ((m.totalAssets - (m.cash ?? 0)) / m.totalAssets) * 10_000 : undefined;
+  const u = m ? utilisation(m) : undefined;
+  const util = u === undefined ? undefined : u * 10_000;
   const info = MARKETS[symbol];
 
   return (

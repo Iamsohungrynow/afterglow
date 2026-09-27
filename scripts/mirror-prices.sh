@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Mirrors Robinhood Chain mainnet Chainlink prices into the testnet DemoPriceFeeds.
+# Testnet keeper: mirrors Robinhood Chain mainnet Chainlink prices into the testnet DemoPriceFeeds,
+# then runs the weekend sweep (AfterglowMarket.rebalance) on each market.
 #
 # Robinhood Chain testnet has no Chainlink equity feeds, so the testnet markets read owner-published
 # DemoPriceFeeds. This copies each mainnet print across, and only when mainnet has printed since the
@@ -68,4 +69,34 @@ while read -r sym testnet_feed; do
     status=1
   fi
 done <<< "$pairs"
+
+# Weekend sweep: after prices are current, move each market's unlent USDG toward the session's
+# target (see AfterglowMarket.rebalance). It is permissionless, so the keeper needs no role for it.
+# Simulate first and only send when something would move: the target changes around the Friday
+# close and the Sunday-night reopen, and when deposits, borrows or repayments shift the balance.
+markets=$(node -e '
+  const d = require(process.argv[1]);
+  if (!d.idleVault || /^0x0+$/.test(d.idleVault)) process.exit(0);
+  for (const [s, m] of Object.entries(d.markets)) console.log(s, m.market);
+' "$ROOT/deployments/46630.json")
+
+while read -r sym market; do
+  [[ -z "$sym" ]] && continue
+  moves=$(cast call "$market" "rebalance()(uint256,uint256)" --rpc-url "$TESTNET_RPC" | awk '{print $1}' | paste -sd' ')
+  read -r deploy recall <<< "$moves"
+  if [[ "$deploy" == "0" && "$recall" == "0" ]]; then
+    echo "$sym sweep: on target"
+    continue
+  fi
+  if (( DRY_RUN )); then
+    echo "$sym sweep: would move deploy=$deploy recall=$recall"
+    continue
+  fi
+  if cast send "$market" "rebalance()" --private-key "$MIRROR_PRIVATE_KEY" --rpc-url "$TESTNET_RPC" >/dev/null; then
+    echo "$sym sweep: deployed $deploy, recalled $recall"
+  else
+    echo "$sym sweep: rebalance FAILED" >&2
+    status=1
+  fi
+done <<< "$markets"
 exit $status

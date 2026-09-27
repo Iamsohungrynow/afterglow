@@ -1,4 +1,4 @@
-name: Mirror Chainlink prices to testnet
+name: Testnet keeper (mirror Chainlink prices, weekend sweep)
 
 # Keeps the Robinhood Chain testnet demo feeds in step with mainnet Chainlink. See scripts/mirror-prices.sh.
 on:

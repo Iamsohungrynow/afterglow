@@ -34,6 +34,9 @@ export const tranchesAbi = parseAbi([
   "function withdrawJunior(uint256 assets, address receiver) returns (uint256)",
 ]);
 
+/** DemoSavingsVault exposes its rate; a real savings vault may not. */
+export const savingsAbi = parseAbi(["function rateWad() view returns (uint256)"]);
+
 export const marketAbi = parseAbi([
   "function marketStatus() view returns (uint8 session, uint256 price, uint256 maxLtvBps, uint256 discount)",
   "function positions(address) view returns (uint256 collateral, uint256 face)",
@@ -46,6 +49,9 @@ export const marketAbi = parseAbi([
   "function totalFace() view returns (uint256)",
   "function totalAssets() view returns (uint256)",
   "function supplyCap() view returns (uint256)",
+  "function idleAssets() view returns (uint256)",
+  "function targetIdle() view returns (uint256)",
+  "function rebalance() returns (uint256 deployed, uint256 recalled)",
   "function balanceOf(address) view returns (uint256)",
   "function maxWithdraw(address) view returns (uint256)",
   "function convertToAssets(uint256) view returns (uint256)",

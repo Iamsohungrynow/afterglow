@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
@@ -24,6 +25,11 @@ import {IGapGuard} from "./interfaces/IGapGuard.sol";
 /// Risk follows the equity market clock via {PhaselockOracle}: borrowing capacity ramps down before
 /// the weekly close, borrowing stops while prices are stale, and liquidations wait for a fresh price.
 /// Repaying and adding collateral are always possible.
+///
+/// Weekend sweep: USDG that is not lent can sit in an ERC-4626 savings vault (`idleVault`). The cash
+/// buffer follows the same clock: while borrowing is possible a larger share stays in the market, and
+/// once the market closes (no new borrowing until the reopen) nearly all of it goes to the vault.
+/// Anyone may call {rebalance}; borrows and lender withdrawals pull from the vault on demand.
 contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using Math for uint256;
@@ -59,6 +65,13 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         string symbol;
     }
 
+    struct SweepParams {
+        uint16 liveBufferBps; // share of total assets kept as cash while borrowing is possible
+        uint16 closedBufferBps; // share kept as cash while the market is closed (lender withdrawals only)
+        uint16 minMoveBps; // skip moves smaller than this share of total assets (saves gas)
+        uint256 maxIdle; // most USDG ever placed in the vault
+    }
+
     IERC20 public immutable collateralToken;
     PhaselockOracle public immutable oracle;
     uint64 public immutable maturity;
@@ -80,6 +93,11 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     uint256 public badDebt;
     /// @notice Deposits stop once total assets reach this. Keeps early deployments small.
     uint256 public supplyCap;
+    /// @notice Optional ERC-4626 savings vault for USDG that is not lent out.
+    IERC4626 public idleVault;
+    /// @notice Idle-vault shares held for lenders. Tracked internally, like `cash`.
+    uint256 public idleShares;
+    SweepParams public sweepParams;
 
     mapping(address borrower => Position) public positions;
 
@@ -95,6 +113,9 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     event GuardianSet(address guardian);
     event SupplyCapSet(uint256 supplyCap);
     event GapGuardSet(address gapGuard);
+    event IdleVaultSet(address idleVault);
+    event SweepParamsSet(SweepParams params);
+    event Swept(uint256 deployed, uint256 recalled, uint256 idleAssets);
 
     error ZeroAmount();
     error Matured();
@@ -107,6 +128,7 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     error InvalidRiskParams();
     error InvalidConfig();
     error NotGuardian();
+    error IdleVaultInUse();
 
     constructor(Config memory c) ERC20(c.name, c.symbol) ERC4626(c.loanToken) Ownable(c.owner) {
         if (c.maturity <= block.timestamp || address(c.oracle) == address(0) || c.rateWad > WAD) {
@@ -125,6 +147,7 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         guardian = c.guardian;
         supplyCap = c.supplyCap;
         _setRiskParams(c.risk);
+        _setSweepParams(SweepParams({liveBufferBps: 2000, closedBufferBps: 500, minMoveBps: 100, maxIdle: type(uint256).max}));
     }
 
     // ---------------------------------------------------------------------
@@ -143,12 +166,12 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     function borrow(uint256 assets, address receiver) external nonReentrant whenNotPaused returns (uint256 face) {
         if (assets == 0) revert ZeroAmount();
         if (block.timestamp >= maturity) revert Matured();
-        if (assets > cash) revert InsufficientCash();
 
         PhaselockOracle.Quote memory q = oracle.quote(address(collateralToken));
         if (q.session != PhaselockOracle.Session.Live && q.session != PhaselockOracle.Session.Closing) {
             revert MarketNotLive(q.session);
         }
+        _ensureCash(assets);
 
         face = assets.mulDiv(WAD, discountWad(), Math.Rounding.Ceil);
         Position storage p = positions[msg.sender];
@@ -315,12 +338,80 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         return p.face != 0 && _isLiquidatable(p, q.price);
     }
 
+    /// @notice USDG value of the idle-vault position.
+    function idleAssets() public view returns (uint256) {
+        uint256 s = idleShares;
+        return s == 0 ? 0 : idleVault.previewRedeem(s);
+    }
+
+    /// @notice USDG the market can pay out right now: cash plus what the idle vault will release.
+    function liquidAssets() public view returns (uint256) {
+        uint256 s = idleShares;
+        if (s == 0) return cash;
+        return cash + Math.min(idleVault.previewRedeem(s), idleVault.maxWithdraw(address(this)));
+    }
+
+    /// @notice How much USDG the sweep wants in the idle vault right now. Follows the market clock:
+    /// live or closing keeps `liveBufferBps` of total assets as cash for borrowers; closed keeps only
+    /// `closedBufferBps`, since nobody can borrow until the reopen. Halted, paused, matured or no vault: zero.
+    function targetIdle() public view returns (uint256) {
+        if (address(idleVault) == address(0) || paused() || block.timestamp >= maturity) return 0;
+        PhaselockOracle.Session s = oracle.quote(address(collateralToken)).session;
+        if (s == PhaselockOracle.Session.Halted) return 0;
+        SweepParams memory p = sweepParams;
+        uint256 bufferBps = s == PhaselockOracle.Session.Closed ? p.closedBufferBps : p.liveBufferBps;
+        uint256 unlent = cash + idleAssets();
+        uint256 keep = totalAssets().mulDiv(bufferBps, BPS, Math.Rounding.Ceil);
+        return unlent > keep ? Math.min(unlent - keep, p.maxIdle) : 0;
+    }
+
+    // ---------------------------------------------------------------------
+    // Weekend sweep
+    // ---------------------------------------------------------------------
+
+    /// @notice Moves unlent USDG between the market and the idle vault toward {targetIdle}. Anyone can
+    /// call it: the target comes from the market clock, not the caller. Moves smaller than
+    /// `minMoveBps` of total assets are skipped, except a full recall.
+    function rebalance() external nonReentrant returns (uint256 deployed, uint256 recalled) {
+        IERC4626 v = idleVault;
+        if (address(v) == address(0)) return (0, 0);
+        uint256 target = targetIdle();
+        uint256 current = idleAssets();
+
+        if (target == 0) {
+            if (idleShares == 0) return (0, 0);
+            recalled = _recallAll();
+        } else {
+            uint256 minMove = totalAssets().mulDiv(sweepParams.minMoveBps, BPS);
+            if (target > current) {
+                deployed = Math.min(target - current, v.maxDeposit(address(this)));
+                if (deployed == 0 || deployed < minMove) return (0, 0);
+                cash -= deployed;
+                IERC20(asset()).forceApprove(address(v), deployed);
+                idleShares += v.deposit(deployed, address(this));
+            } else {
+                recalled = Math.min(current - target, v.maxWithdraw(address(this)));
+                if (recalled == 0 || recalled < minMove) return (0, 0);
+                _recall(recalled);
+            }
+        }
+        emit Swept(deployed, recalled, idleAssets());
+    }
+
+    /// @notice Pulls everything back from the idle vault. Owner or guardian.
+    function recallAll() external nonReentrant returns (uint256 recalled) {
+        if (msg.sender != guardian && msg.sender != owner()) revert NotGuardian();
+        if (idleShares == 0) return 0;
+        recalled = _recallAll();
+        emit Swept(0, recalled, 0);
+    }
+
     // ---------------------------------------------------------------------
     // ERC-4626
     // ---------------------------------------------------------------------
 
     function totalAssets() public view override returns (uint256) {
-        return cash + totalFace.mulDiv(discountWad(), WAD, Math.Rounding.Floor);
+        return cash + idleAssets() + totalFace.mulDiv(discountWad(), WAD, Math.Rounding.Floor);
     }
 
     function maxDeposit(address) public view override returns (uint256) {
@@ -336,13 +427,13 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         return assets == type(uint256).max ? assets : _convertToShares(assets, Math.Rounding.Floor);
     }
 
-    /// @dev Lenders can only take out what is not lent.
+    /// @dev Lenders can only take out what is not lent: cash plus what the idle vault will release.
     function maxWithdraw(address owner) public view override returns (uint256) {
-        return Math.min(_convertToAssets(balanceOf(owner), Math.Rounding.Floor), cash);
+        return Math.min(_convertToAssets(balanceOf(owner), Math.Rounding.Floor), liquidAssets());
     }
 
     function maxRedeem(address owner) public view override returns (uint256) {
-        return Math.min(balanceOf(owner), _convertToShares(cash, Math.Rounding.Floor));
+        return Math.min(balanceOf(owner), _convertToShares(liquidAssets(), Math.Rounding.Floor));
     }
 
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares)
@@ -359,7 +450,7 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         override
         nonReentrant
     {
-        if (assets > cash) revert InsufficientCash();
+        _ensureCash(assets);
         cash -= assets;
         super._withdraw(caller, receiver, owner, assets, shares);
     }
@@ -380,6 +471,18 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     function setGapGuard(IGapGuard gapGuard_) external onlyOwner {
         gapGuard = gapGuard_;
         emit GapGuardSet(address(gapGuard_));
+    }
+
+    /// @notice The vault must hold the same asset. Recall everything before switching vaults.
+    function setIdleVault(IERC4626 idleVault_) external onlyOwner {
+        if (idleShares != 0) revert IdleVaultInUse();
+        if (address(idleVault_) != address(0) && idleVault_.asset() != asset()) revert InvalidConfig();
+        idleVault = idleVault_;
+        emit IdleVaultSet(address(idleVault_));
+    }
+
+    function setSweepParams(SweepParams calldata p) external onlyOwner {
+        _setSweepParams(p);
     }
 
     function setSupplyCap(uint256 supplyCap_) external onlyOwner {
@@ -416,6 +519,37 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         ) revert InvalidRiskParams();
         risk = r;
         emit RiskParamsSet(r);
+    }
+
+    function _setSweepParams(SweepParams memory p) internal {
+        if (p.liveBufferBps > BPS || p.closedBufferBps > BPS || p.minMoveBps > BPS) revert InvalidConfig();
+        sweepParams = p;
+        emit SweepParamsSet(p);
+    }
+
+    /// @dev Makes sure `assets` is held as cash, pulling the shortfall from the idle vault.
+    function _ensureCash(uint256 assets) internal {
+        uint256 c = cash;
+        if (assets <= c) return;
+        if (assets > liquidAssets()) revert InsufficientCash();
+        _recall(assets - c);
+    }
+
+    /// @dev Books the shares before calling out; ERC-4626 redeems at least what previewWithdraw promised.
+    function _recall(uint256 assets) internal {
+        IERC4626 v = idleVault;
+        uint256 shares = Math.min(v.previewWithdraw(assets), idleShares);
+        idleShares -= shares;
+        uint256 got = v.redeem(shares, address(this), address(this));
+        if (got < assets) revert InsufficientCash();
+        cash += got;
+    }
+
+    function _recallAll() internal returns (uint256 assets) {
+        uint256 shares = idleShares;
+        idleShares = 0;
+        assets = idleVault.redeem(shares, address(this), address(this));
+        cash += assets;
     }
 
     /// @dev Collateral value in loan-token units.

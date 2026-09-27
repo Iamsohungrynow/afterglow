@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
 import type { Address } from "viem";
-import { marketAbi, tranchesAbi } from "@/lib/abi";
+import { marketAbi, savingsAbi, tranchesAbi } from "@/lib/abi";
 import { MARKETS, deploymentFor, type RiskParams } from "@/lib/markets";
 import { SESSIONS, maxBorrowLtv, scheduleSession, type Session } from "@/lib/session";
 import { useLivePrices } from "./useLivePrices";
@@ -26,6 +26,9 @@ export interface MarketView {
   totalFace?: number;
   totalAssets?: number;
   supplyCap?: number;
+  /** USDG parked in the savings vault by the weekend sweep. */
+  idle?: number;
+  savingsAprPct?: number;
   tranches: TrancheView;
 }
 
@@ -38,14 +41,25 @@ export interface TrancheView {
   coverBps?: number;
 }
 
+/** Share of lender money that is lent out. USDG in the savings vault is not lent. */
+export function utilisation(m: MarketView): number | undefined {
+  if (!m.totalAssets) return undefined;
+  return Math.max(0, (m.totalAssets - (m.cash ?? 0) - (m.idle ?? 0)) / m.totalAssets);
+}
+
+/** Yearly USDG earned on `capital`: the fixed rate on the lent share plus the savings rate on the swept share. */
+export function poolIncome(m: MarketView, capital: number): number {
+  const lent = utilisation(m) ?? 0;
+  const swept = m.totalAssets ? (m.idle ?? 0) / m.totalAssets : 0;
+  return capital * ((m.aprPct / 100) * lent + ((m.savingsAprPct ?? 0) / 100) * swept);
+}
+
 /** Boost APR implied by the waterfall: pool income minus Protected's target, over Boost capital. */
 export function boostAprPct(m: MarketView): number | undefined {
   const t = m.tranches;
   if (t.seniorValue === undefined || t.juniorValue === undefined || !t.juniorValue) return undefined;
-  const total = t.seniorValue + t.juniorValue;
-  const util = m.totalAssets ? (m.totalAssets - (m.cash ?? 0)) / m.totalAssets : 0;
-  const poolIncome = total * (m.aprPct / 100) * util;
-  return ((poolIncome - t.seniorValue * (t.seniorAprPct / 100)) / t.juniorValue) * 100;
+  const income = poolIncome(m, t.seniorValue + t.juniorValue);
+  return ((income - t.seniorValue * (t.seniorAprPct / 100)) / t.juniorValue) * 100;
 }
 
 /** First Thursday 20:00 UTC at or after t (matches the deploy script). */
@@ -95,6 +109,21 @@ export function useMarket(symbol: string, chainId: number | undefined, now: numb
         bigint,
         bigint,
       ];
+      // Weekend sweep, on deployments that have a savings vault.
+      let idle: number | undefined;
+      let savingsAprPct: number | undefined;
+      const vault = dep!.idleVault;
+      if (vault && !/^0x0+$/.test(vault)) {
+        const [ia, rw] = await client!.multicall({
+          allowFailure: true,
+          contracts: [
+            { address, abi: marketAbi, functionName: "idleAssets" },
+            { address: vault, abi: savingsAbi, functionName: "rateWad" },
+          ],
+        });
+        if (ia.status === "success") idle = Number(ia.result) / 1e6;
+        if (rw.status === "success") savingsAprPct = (Number(rw.result) / 1e18) * 100;
+      }
       let tranches: TrancheView = { seniorAprPct: (Number(rate) / 1e18) * 62.5, minJuniorBps: 2000 };
       if (entry!.tranches) {
         const t = entry!.tranches;
@@ -135,6 +164,8 @@ export function useMarket(symbol: string, chainId: number | undefined, now: numb
         totalFace: Number(totalFace) / 1e6,
         totalAssets: Number(totalAssets) / 1e6,
         supplyCap: cap > 10n ** 30n ? undefined : Number(cap) / 1e6,
+        idle,
+        savingsAprPct,
       };
       return view;
     },

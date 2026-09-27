@@ -61,6 +61,9 @@ export function Strategies() {
           Boost keeps <span className="text-glow">the rest</span>
         </span>
       </Reveal>
+      <p className="mt-4 text-[14px] text-fg-2">
+        Unlent USDG earns too: it sweeps into a savings vault, and on weekends almost all of it does.
+      </p>
 
       <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-line bg-line md:grid-cols-2">
         {STRATEGIES.map((s, i) => (

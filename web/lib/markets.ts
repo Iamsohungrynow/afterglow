@@ -76,6 +76,8 @@ export interface Deployment {
   usdg: Address;
   usdgFeed: Address;
   gapGuard: Address;
+  /** ERC-4626 savings vault for unlent USDG (the weekend sweep); absent on older deployments. */
+  idleVault?: Address;
   oracle: Address;
   maturity: number;
   markets: Record<

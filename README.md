@@ -19,12 +19,29 @@ See [docs/DESIGN.md](docs/DESIGN.md) for the problem, market evidence and mechan
 | Contract | Purpose |
 |---|---|
 | [`PhaselockOracle`](src/PhaselockOracle.sol) | Chainlink price + market session (Live / Closing / Closed / Halted), corporate-action and sequencer aware |
-| [`AfterglowMarket`](src/AfterglowMarket.sol) | One collateral, one maturity, one fixed rate; ERC-4626 lender shares; borrow, repay, liquidate |
+| [`AfterglowMarket`](src/AfterglowMarket.sol) | One collateral, one maturity, one fixed rate; ERC-4626 lender shares; borrow, repay, liquidate; weekend sweep of unlent USDG |
 | [`AfterglowTranches`](src/AfterglowTranches.sol) | Splits a market's lenders into Protected (senior, fixed target rate, paid first) and Boost (junior, residual yield, first loss); junior must stay at least 20% |
 | [`GapGuard`](stylus/gap-guard/src/lib.rs) (Rust, Arbitrum Stylus) | EWMA model of each stock's Friday-close → Monday-open gaps; tightens the weekend LTV after volatile weekends. Uses OpenZeppelin Contracts for Stylus |
 
 Phaselock knows **when** the market is closed. GapGuard knows **how far it can jump** while closed.
 Prices are quoted in USDG through Chainlink's USDG/USD feed, and everything halts if USDG leaves a ±2% band.
+
+### Weekend sweep
+
+USDG that is not lent does not sit idle. Each market can park it in an ERC-4626 USDG savings vault, and the
+cash buffer follows the same market clock as everything else:
+
+| Session | Kept as cash | Why |
+|---|---|---|
+| Live / Closing | 20% of the pool | borrowers can draw at any moment |
+| Closed (weekend) | 5% | nobody can borrow until the reopen; only lender withdrawals |
+| Halted, paused, matured | 100% | everything comes back |
+
+`rebalance()` is permissionless (the target comes from the oracle, not the caller) and skips moves under 1% of
+the pool. Borrows and lender withdrawals pull any shortfall from the vault in the same transaction, so nobody
+waits on a keeper. Vault shares are tracked internally, so donations cannot move the lenders' share price. The
+owner can cap the swept amount, and the owner or guardian can `recallAll()`. On testnet the vault is a
+[`DemoSavingsVault`](src/demo/DemoSavingsVault.sol) paying a fixed 3.6% from a reserve topped up with faucet USDG.
 
 ## Sponsor stack
 
@@ -86,7 +103,9 @@ On Windows, `cargo-stylus` 0.10.9 needs its unix-only debugger compiled out, and
 locally (see [`stylus/patches`](stylus/patches)) so the macro crate links under MSVC.
 
 Optional env: `RATE_WAD` (default `0.08e18`), `TERM_DAYS` (28; maturity snaps to the next Thursday 20:00 UTC),
-`SUPPLY_CAP` (loan-token units).
+`SUPPLY_CAP` (loan-token units), `ORACLE` (reuse a deployed Phaselock oracle and the feeds it already has),
+`IDLE_VAULT` (savings vault for the weekend sweep; testnets deploy a `DemoSavingsVault` when unset) and
+`SAVINGS_RESERVE` (USDG the deployer sends to that demo vault as its yield reserve).
 
 ### Prices on testnet
 

@@ -8,7 +8,7 @@ import { Segmented } from "@/components/earn/Segmented";
 import { TrancheActionCard } from "@/components/earn/TrancheActionCard";
 import { useReadChain } from "@/hooks/useReadChain";
 import { useNow } from "@/hooks/useNow";
-import { boostAprPct, useMarket, type MarketView } from "@/hooks/useMarket";
+import { boostAprPct, poolIncome, useMarket, utilisation, type MarketView } from "@/hooks/useMarket";
 import { MARKETS, deploymentFor, gapModel } from "@/lib/markets";
 import { chains } from "@/lib/chains";
 import { daysLeft, fmt, fmtDate, fmtPct, short } from "@/lib/format";
@@ -64,7 +64,7 @@ function VaultDetail() {
   const value = isP ? t?.seniorValue : t?.juniorValue;
   const boost = m ? boostAprPct(m) : undefined;
   const apy = isP ? t?.seniorAprPct : boost;
-  const util = m?.totalAssets ? (m.totalAssets - (m.cash ?? 0)) / m.totalAssets : undefined;
+  const util = m ? utilisation(m) : undefined;
 
   const setTranche = (v: Tranche) => router.replace(`/earn/${symbol}?t=${v}`, { scroll: false });
 
@@ -117,7 +117,12 @@ function VaultDetail() {
               label="Pool utilisation"
               value={util === undefined ? (m ? "-" : <Skel w={70} h={26} />) : (util * 100).toFixed(1)}
               unit={util === undefined ? undefined : "%"}
-              sub={m?.totalAssets !== undefined ? `${fmt(m.totalAssets - (m.cash ?? 0), 0)} of ${fmt(m.totalAssets, 0)} lent` : undefined}
+              sub={
+                m?.totalAssets !== undefined
+                  ? `${fmt(m.totalAssets * (util ?? 0), 0)} of ${fmt(m.totalAssets, 0)} lent` +
+                    (m.idle ? `, ${fmt(m.idle, 0)} in savings` : "")
+                  : undefined
+              }
             />
           </div>
 
@@ -166,7 +171,8 @@ function Waterfall({ m, tranche, util }: { m: MarketView; tranche: Tranche; util
   const hasVals = t.seniorValue !== undefined && t.juniorValue !== undefined;
   const total = hasVals ? t.seniorValue! + t.juniorValue! : undefined;
   const lent = total !== undefined && util !== undefined ? total * util : undefined;
-  const income = lent !== undefined ? lent * (m.aprPct / 100) : undefined;
+  const swept = total !== undefined && m.totalAssets ? total * ((m.idle ?? 0) / m.totalAssets) : 0;
+  const income = total !== undefined && util !== undefined ? poolIncome(m, total) : undefined;
   const seniorDue = t.seniorValue !== undefined ? t.seniorValue * (t.seniorAprPct / 100) : undefined;
   const seniorPaid = income !== undefined && seniorDue !== undefined ? Math.min(income, seniorDue) : undefined;
   const boostIncome = income !== undefined && seniorDue !== undefined ? income - seniorDue : undefined;
@@ -181,7 +187,8 @@ function Waterfall({ m, tranche, util }: { m: MarketView; tranche: Tranche; util
     <Card className="mt-10 p-5 md:p-6">
       <h2 className="text-[15px] text-fg">Where the yield comes from</h2>
       <p className="mt-1 text-[13px] text-fg-2">
-        Yearly figures at today&apos;s utilisation. Borrowers pay a fixed rate, and the vault splits it in order.
+        Yearly figures at today&apos;s utilisation. Borrowers pay a fixed rate, unlent USDG earns the savings rate, and
+        the vault splits it in order.
       </p>
 
       <div className="mt-5 flex flex-col items-stretch gap-2 md:flex-row md:items-center">
@@ -190,6 +197,11 @@ function Waterfall({ m, tranche, util }: { m: MarketView; tranche: Tranche; util
           <div className="num mt-1.5 text-[22px] text-fg">{m.aprPct.toFixed(2)}%</div>
           <div className="num mt-1.5 text-[12px] leading-snug text-fg-2">
             fixed on {lent === undefined ? "lent USDG" : `${fmt(lent, 0)} USDG lent`}
+            {swept > 0 && m.savingsAprPct !== undefined && (
+              <span className="block">
+                + {m.savingsAprPct.toFixed(2)}% savings on {fmt(swept, 0)} USDG unlent
+              </span>
+            )}
             {income !== undefined && <span className="block text-fg-3">{fmt(income, 0)} USDG a year</span>}
           </div>
         </div>
