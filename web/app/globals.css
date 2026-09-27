@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+/*
+  Afterglow design tokens. Dark-only by design (trading terminal; both references are dark).
+  One accent: "afterglow" amber, the light that lingers after the close.
+  Shape rule: surfaces are square with 1px hairlines; interactive controls use 6px radius;
+  status chips are the only pill shape.
+*/
+@theme {
+  --color-ink: #0a0a0b;
+  --color-ink-2: #0f0f11;
+  --color-ink-3: #151518;
+  --color-line: rgb(255 255 255 / 0.07);
+  --color-line-strong: rgb(255 255 255 / 0.14);
+  --color-fg: #ecebe8;
+  --color-fg-2: #a3a19c;
+  --color-fg-3: #6d6b67;
+
+  --color-glow: #e9a15e;
+  --color-glow-deep: #b8733a;
+  --color-live: #3fb68b;
+  --color-halt: #e5484d;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-display-serif), ui-serif, Georgia, serif;
+
+  --radius-ctl: 6px;
+
+  --animate-pulse-soft: pulse-soft 2.4s ease-in-out infinite;
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+}
+
+html {
+  color-scheme: dark;
+  background: var(--color-ink);
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01", "cv11";
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Film grain on a fixed, non-scrolling layer only. */
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+::selection {
+  background: rgb(233 161 94 / 0.3);
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

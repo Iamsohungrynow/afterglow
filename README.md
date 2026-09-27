@@ -90,6 +90,20 @@ Testnet demo: move a price with `cast send <feed> "publish(int256)" 30000000000 
 After US daylight saving ends (1 Nov 2026) the owner must shift the weekly close by one hour:
 `setSchedule(5 days + 1 hours, 2 days, 4 hours, 1 hours)`.
 
+## Web app
+
+[`web/`](web) is a Next.js app: a landing page and a trading terminal at `/app`.
+
+- Reads live Chainlink prices from Robinhood Chain mainnet, so it works in preview mode before any deployment.
+- After a deployment, `node web/scripts/sync-deployments.mjs` copies `deployments/*.json` into the app, and the terminal
+  switches to the deployed markets on that chain.
+- With a ZeroDev project ID in `web/.env.local` (see `web/.env.example`), borrowers get a Kernel smart account with
+  sponsored gas on Robinhood Chain testnet and Arbitrum Sepolia: approve, deposit and borrow settle in one user operation.
+
+```bash
+cd web && npm install && npm run dev
+```
+
 ## Status
 
 Hackathon build for Arbitrum Open House Singapore (Sep–Oct 2026). Unaudited; do not use with real funds.

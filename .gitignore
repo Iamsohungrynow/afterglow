@@ -8,3 +8,10 @@ notes/
 
 # Stylus build output
 stylus/**/target/
+
+# web app secrets / local config
+web/.env.local
+web/node_modules/
+web/.next/
+web/*.tsbuildinfo
+web/.next-build/
