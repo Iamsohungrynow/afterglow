@@ -14,15 +14,25 @@ const display = Cormorant_Garamond({
   display: "swap",
 });
 
+const DESCRIPTION = "Fixed-rate USDG credit lines against tokenized stocks, on Robinhood Chain.";
+
 export const metadata: Metadata = {
+  // Resolves relative URLs in link previews (the Open Graph image, openGraph.url).
+  metadataBase: new URL("https://afterglow-credit.vercel.app"),
   title: "Afterglow",
-  description: "Fixed-rate USDG credit lines against tokenized stocks, on Robinhood Chain.",
-  // app/icon.svg and app/apple-icon.png are picked up by Next's file conventions.
+  description: DESCRIPTION,
+  // app/icon.svg, app/apple-icon.png and app/opengraph-image.tsx are picked up by Next's file conventions.
   openGraph: {
     title: "Afterglow",
-    description: "Fixed-rate USDG credit lines against tokenized stocks, on Robinhood Chain.",
+    description: DESCRIPTION,
+    url: "/",
     siteName: "Afterglow",
     type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Afterglow",
+    description: DESCRIPTION,
   },
 };
 
