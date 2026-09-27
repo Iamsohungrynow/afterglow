@@ -6,22 +6,26 @@ import {AggregatorV3Interface} from "./interfaces/AggregatorV3Interface.sol";
 import {IStockToken} from "./interfaces/IStockToken.sol";
 
 /// @title PhaselockOracle
-/// @notice Prices tokenized stocks and classifies every read by the US equity market clock.
-/// Robinhood Chain feeds publish 24/5 and hold the last value off-hours, so a price alone
-/// cannot tell a lending market whether it is safe to act on. This oracle adds that context.
+/// @notice Prices tokenized stocks and phase-locks every read to the US equity market clock.
+///
+/// Robinhood Chain equity feeds publish 24/5 on a 0.5% deviation / 24h heartbeat basis, so a
+/// quiet stock can go many hours without an update while its market is open, and the feed holds
+/// the last value all weekend. Freshness therefore cannot tell open from closed: the session is
+/// derived from the weekly schedule (plus owner-set holiday closures), and freshness is only used
+/// to require a first post-reopen print and to detect a feed that has stopped keeping its heartbeat.
 /// @dev Prices are per raw token (1e18 raw units) in USD with 18 decimals. Robinhood feeds
 /// already include the corporate-action multiplier, so no multiplier is applied here.
 contract PhaselockOracle is Ownable2Step {
     enum Session {
-        Live, // fresh price, market clock normal
-        Closing, // fresh price, inside the window before the weekly close
-        Closed, // price stale: weekend, holiday or overnight gap
+        Live, // market open, price published since it opened
+        Closing, // market open, inside the window before the weekly close
+        Closed, // weekend or holiday, or no print yet since the market reopened
         Halted // price must not be used for risk decisions
 
     }
 
     struct Quote {
-        uint256 price; // USD per whole token, 1e18 = $1
+        uint256 price; // USD per whole token, 1e18 = $1; last published value when Closed
         Session session;
         uint16 rampBps; // progress through the closing window, 0..10_000 (only in Closing)
         uint256 updatedAt;
@@ -29,8 +33,13 @@ contract PhaselockOracle is Ownable2Step {
 
     struct Asset {
         AggregatorV3Interface feed;
-        uint32 maxStaleness; // older than this => Closed
+        uint32 maxStaleness; // while open, older than this => Halted (feed missed its heartbeat)
         bool enabled;
+    }
+
+    struct Closure {
+        uint64 start;
+        uint64 end;
     }
 
     uint16 internal constant BPS = 10_000;
@@ -47,20 +56,27 @@ contract PhaselockOracle is Ownable2Step {
     /// @notice Seconds after Monday 00:00 UTC at which feeds stop for the weekend.
     /// Friday 20:00 ET is Saturday 00:00 UTC in summer (EDT) and 01:00 UTC in winter (EST).
     uint32 public weeklyCloseOffset;
+    /// @notice Length of the weekend closure (Friday 20:00 ET to Sunday 20:00 ET = 2 days).
+    uint32 public weekendLength;
     /// @notice Length of the pre-close window in which borrowing capacity ramps down.
     uint32 public closingWindow;
     /// @notice How long before a scheduled corporate action the asset is halted.
     uint32 public corporateActionLead;
 
+    /// @notice One-off market closure (exchange holiday), set ahead of time by the owner.
+    Closure public closure;
+
     event AssetSet(address indexed token, address feed, uint32 maxStaleness, bool enabled);
     event SequencerFeedSet(address feed, uint32 gracePeriod);
-    event ScheduleSet(uint32 weeklyCloseOffset, uint32 closingWindow, uint32 corporateActionLead);
+    event ScheduleSet(uint32 weeklyCloseOffset, uint32 weekendLength, uint32 closingWindow, uint32 corporateActionLead);
+    event ClosureSet(uint64 start, uint64 end);
 
     error InvalidSchedule();
+    error InvalidClosure();
     error FeedDecimalsTooHigh();
 
     constructor(address owner_) Ownable(owner_) {
-        _setSchedule(5 days, 4 hours, 1 hours);
+        _setSchedule(5 days, 2 days, 4 hours, 1 hours);
     }
 
     // ---------------------------------------------------------------------
@@ -82,19 +98,39 @@ contract PhaselockOracle is Ownable2Step {
         emit SequencerFeedSet(address(feed), gracePeriod);
     }
 
-    function setSchedule(uint32 weeklyCloseOffset_, uint32 closingWindow_, uint32 corporateActionLead_)
-        external
-        onlyOwner
-    {
-        _setSchedule(weeklyCloseOffset_, closingWindow_, corporateActionLead_);
+    /// @notice Owner updates the offset at each daylight-saving change (Saturday 00:00 UTC in
+    /// summer, 01:00 UTC in winter).
+    function setSchedule(
+        uint32 weeklyCloseOffset_,
+        uint32 weekendLength_,
+        uint32 closingWindow_,
+        uint32 corporateActionLead_
+    ) external onlyOwner {
+        _setSchedule(weeklyCloseOffset_, weekendLength_, closingWindow_, corporateActionLead_);
     }
 
-    function _setSchedule(uint32 weeklyCloseOffset_, uint32 closingWindow_, uint32 corporateActionLead_) internal {
-        if (weeklyCloseOffset_ >= WEEK || closingWindow_ == 0 || closingWindow_ >= 1 days) revert InvalidSchedule();
+    /// @notice Schedule a one-off closure such as an exchange holiday. Pass (0, 0) to clear.
+    function setClosure(uint64 start, uint64 end) external onlyOwner {
+        if (start > end) revert InvalidClosure();
+        closure = Closure(start, end);
+        emit ClosureSet(start, end);
+    }
+
+    function _setSchedule(
+        uint32 weeklyCloseOffset_,
+        uint32 weekendLength_,
+        uint32 closingWindow_,
+        uint32 corporateActionLead_
+    ) internal {
+        if (
+            weeklyCloseOffset_ >= WEEK || weekendLength_ == 0 || weekendLength_ >= WEEK - 1 days
+                || closingWindow_ == 0 || closingWindow_ >= 1 days
+        ) revert InvalidSchedule();
         weeklyCloseOffset = weeklyCloseOffset_;
+        weekendLength = weekendLength_;
         closingWindow = closingWindow_;
         corporateActionLead = corporateActionLead_;
-        emit ScheduleSet(weeklyCloseOffset_, closingWindow_, corporateActionLead_);
+        emit ScheduleSet(weeklyCloseOffset_, weekendLength_, closingWindow_, corporateActionLead_);
     }
 
     // ---------------------------------------------------------------------
@@ -115,9 +151,16 @@ contract PhaselockOracle is Ownable2Step {
         q.price = uint256(answer) * 10 ** (18 - a.feed.decimals());
         q.updatedAt = updatedAt;
 
-        if (block.timestamp - updatedAt > a.maxStaleness) {
+        // Closed by the clock, or reopened but still showing the pre-close price.
+        if (isMarketClosed() || updatedAt < lastOpen()) {
             q.session = Session.Closed;
             return q;
+        }
+
+        // Open, yet the feed has missed its heartbeat: something is wrong upstream.
+        if (block.timestamp - updatedAt > a.maxStaleness) {
+            q.price = 0;
+            return q; // Halted
         }
 
         uint256 untilClose = secondsUntilWeeklyClose();
@@ -129,10 +172,32 @@ contract PhaselockOracle is Ownable2Step {
         }
     }
 
+    /// @notice True during the weekly weekend window or an owner-set closure.
+    function isMarketClosed() public view returns (bool) {
+        Closure memory c = closure;
+        if (block.timestamp >= c.start && block.timestamp < c.end) return true;
+        uint256 sinceClose = (_intoWeek() + WEEK - weeklyCloseOffset) % WEEK;
+        return sinceClose < weekendLength;
+    }
+
+    /// @notice Most recent moment the market (re)opened: the end of the last weekend or of a
+    /// closure that has already finished, whichever is later. Only meaningful while open.
+    function lastOpen() public view returns (uint256 t) {
+        uint256 openOffset = (uint256(weeklyCloseOffset) + weekendLength) % WEEK;
+        uint256 sinceOpen = (_intoWeek() + WEEK - openOffset) % WEEK;
+        t = block.timestamp - sinceOpen;
+        uint256 closureEnd = closure.end;
+        if (closureEnd <= block.timestamp && closureEnd > t) t = closureEnd;
+    }
+
     /// @notice Seconds from now until the next weekly close (0 < result <= 1 week).
     function secondsUntilWeeklyClose() public view returns (uint256) {
-        uint256 intoWeek = (block.timestamp + MONDAY_SHIFT) % WEEK;
+        uint256 intoWeek = _intoWeek();
         return intoWeek < weeklyCloseOffset ? weeklyCloseOffset - intoWeek : WEEK - intoWeek + weeklyCloseOffset;
+    }
+
+    function _intoWeek() internal view returns (uint256) {
+        return (block.timestamp + MONDAY_SHIFT) % WEEK;
     }
 
     // ---------------------------------------------------------------------

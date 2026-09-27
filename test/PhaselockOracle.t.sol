@@ -50,17 +50,51 @@ contract PhaselockOracleTest is BaseTest {
         assertEq(uint8(_session()), uint8(PhaselockOracle.Session.Live));
     }
 
-    function test_closed_whenFeedStale_keepsLastPrice() public {
-        vm.warp(block.timestamp + MAX_STALENESS + 1);
+    /// @dev Robinhood feeds update on 0.5% deviation; 20h without a print mid-week is normal.
+    function test_quietFeedMidWeek_staysLive() public {
+        vm.warp(block.timestamp + 20 hours);
+        assertEq(uint8(_session()), uint8(PhaselockOracle.Session.Live));
+    }
+
+    function test_halted_whenFeedMissesHeartbeatWhileOpen() public {
+        vm.warp(block.timestamp + MAX_STALENESS + 1); // Tuesday, no print for 26h+
+        PhaselockOracle.Quote memory q = oracle.quote(address(nvda));
+        assertEq(uint8(q.session), uint8(PhaselockOracle.Session.Halted));
+        assertEq(q.price, 0);
+    }
+
+    function test_closed_overWeekend_keepsLastPrice() public {
+        _warpLive(MONDAY + 5 days - 1); // last update just before Friday 20:00 ET
+        vm.warp(MONDAY + 6 days); // Sunday 00:00 UTC, feed silent
         PhaselockOracle.Quote memory q = oracle.quote(address(nvda));
         assertEq(uint8(q.session), uint8(PhaselockOracle.Session.Closed));
         assertEq(q.price, 180e18);
+        assertTrue(oracle.isMarketClosed());
     }
 
-    function test_closed_overWeekend() public {
-        _warpLive(MONDAY + 5 days - 1); // last update just before Friday 20:00 ET
-        vm.warp(MONDAY + 6 days); // Sunday 00:00 UTC, feed silent
+    function test_reopen_waitsForFirstPrint() public {
+        _warpLive(MONDAY + 5 days - 1); // Friday's last print
+        vm.warp(MONDAY + 1 weeks + 1 hours); // reopened, but still Friday's price
+        assertFalse(oracle.isMarketClosed());
         assertEq(uint8(_session()), uint8(PhaselockOracle.Session.Closed));
+
+        _setPrice(185e8); // first post-open print
+        assertEq(uint8(_session()), uint8(PhaselockOracle.Session.Live));
+    }
+
+    function test_holidayClosure() public {
+        uint64 start = uint64(MONDAY + 1 days); // Tuesday 00:00 UTC
+        uint64 end = uint64(MONDAY + 2 days);
+        vm.prank(owner);
+        oracle.setClosure(start, end);
+
+        _warpLive(start + 1 hours);
+        assertEq(uint8(_session()), uint8(PhaselockOracle.Session.Closed));
+
+        vm.warp(end + 1 hours); // holiday over, no fresh print yet
+        assertEq(uint8(_session()), uint8(PhaselockOracle.Session.Closed));
+        _setPrice(NVDA_PRICE);
+        assertEq(uint8(_session()), uint8(PhaselockOracle.Session.Live));
     }
 
     function test_halted_whenIssuerPausesOracle() public {
@@ -127,9 +161,12 @@ contract PhaselockOracleTest is BaseTest {
 
     function test_onlyOwnerConfigures() public {
         vm.expectRevert();
-        oracle.setSchedule(5 days, 4 hours, 1 hours);
-        vm.prank(owner);
+        oracle.setSchedule(5 days, 2 days, 4 hours, 1 hours);
+        vm.startPrank(owner);
         vm.expectRevert(PhaselockOracle.InvalidSchedule.selector);
-        oracle.setSchedule(7 days, 4 hours, 1 hours);
+        oracle.setSchedule(7 days, 2 days, 4 hours, 1 hours);
+        vm.expectRevert(PhaselockOracle.InvalidClosure.selector);
+        oracle.setClosure(2, 1);
+        vm.stopPrank();
     }
 }

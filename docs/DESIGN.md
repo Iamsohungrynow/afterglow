@@ -39,9 +39,23 @@ US equity market clock instead of pretending stocks trade 24/7.
   collateral value = `balanceOf × feedPrice`. Never apply the multiplier twice.
 - Corporate actions: the issuer pauses the oracle (`oraclePaused()`, advisory only), stages
   `newUIMultiplier()` with `effectiveAt()`, then unpauses. Staleness checks are the real guard.
-- Feeds are `AggregatorV3Interface`, typically 8 decimals, updated 24/5; off-hours they hold
-  the last value with no heartbeat and no market-status field.
+- Feeds are `AggregatorV3Interface`, 8 decimals, 24/5, with a **0.5% deviation threshold and a
+  24h heartbeat**, and no market-status field. Measured on the NVDA feed (22–25 Sep 2026): gaps of
+  2.5h, 13.7h and 20.4h between prints *while the market was open*, and no prints from Friday
+  19:56 UTC through the weekend. **Freshness cannot distinguish open from closed**, so Phaselock
+  takes the session from the market schedule.
 - Sold outside the US, UK, Canada, Switzerland and UAE.
+
+Robinhood Chain (4663) addresses used by the fork tests:
+
+| Item | Address |
+|---|---|
+| NVDA stock token | `0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC` |
+| USDG | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
+| Chainlink NVDA / USD | `0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15` |
+| Chainlink SPY / USD | `0x319724394D3A0e3669269846abE664Cd621f9f6A` |
+| Chainlink QQQ / USD | `0x80901d846d5D7B030F26B480776EE3b29374C2ae` |
+| Chainlink USDG / USD | `0x61B7e5650328764B076A108EFF5fa7282a1B9aD2` |
 
 ## Mechanism
 
@@ -63,10 +77,10 @@ US equity market clock instead of pretending stocks trade 24/7.
 
 | Session | When | Borrow | Withdraw collateral | Liquidate |
 |---|---|---|---|---|
-| **Live** | Feed fresh | up to base LTV | if LTV ≤ base LTV | yes |
-| **Closing** | Feed fresh, inside the window before the weekly close | max LTV ramps linearly from base to weekend LTV | if LTV ≤ ramped LTV | yes |
-| **Closed** | Feed stale (weekend, holiday, overnight gap) | no | only if LTV ≤ weekend LTV at the last price | no (no fair price, no exit liquidity) |
-| **Halted** | Sequencer down, `oraclePaused()`, corporate action in progress, invalid price | no | no | no |
+| **Live** | Market open by the schedule and the feed has printed since it opened | up to base LTV | if LTV ≤ base LTV | yes |
+| **Closing** | As Live, inside the window before the weekly close | max LTV ramps linearly from base to weekend LTV | if LTV ≤ ramped LTV | yes |
+| **Closed** | Weekend (Fri 20:00 ET – Sun 20:00 ET), owner-set holiday, or reopened but no new print yet | no | only if LTV ≤ weekend LTV at the last price | no (no fair price, no exit liquidity) |
+| **Halted** | Sequencer down, `oraclePaused()`, corporate action in progress, invalid price, or feed silent past its heartbeat while open | no | no | no |
 
 Repaying and adding collateral are allowed in every session, and repay is never pausable.
 

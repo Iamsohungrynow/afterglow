@@ -24,7 +24,8 @@ Requires [Foundry](https://getfoundry.sh).
 
 ```bash
 forge build
-forge test
+forge test                                             # unit + fuzz tests, offline
+FORK=true forge test --match-path "test/fork/*"        # against Robinhood Chain mainnet state
 ```
 
 ## Status

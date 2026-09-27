@@ -165,7 +165,7 @@ contract AfterglowMarketTest is BaseTest {
 
     function test_weekend_withdrawOnlyWithinWeekendLtv() public {
         _borrow(7_000e6); // ~38.9% of $18,000
-        vm.warp(block.timestamp + MAX_STALENESS + 1); // stale => Closed
+        vm.warp(MONDAY + 5 days + 12 hours); // Saturday => Closed
 
         // Withdrawing 10 NVDA -> $16,200 collateral, ~43.2%: inside 45%
         vm.prank(borrower);

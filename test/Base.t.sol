@@ -22,7 +22,7 @@ abstract contract BaseTest is Test {
     PhaselockOracle internal oracle;
 
     int256 internal constant NVDA_PRICE = 180e8; // $180, 8 decimals
-    uint32 internal constant MAX_STALENESS = 1 hours;
+    uint32 internal constant MAX_STALENESS = 26 hours; // Robinhood feeds: 24h heartbeat + buffer
 
     function _deployOracle() internal {
         vm.warp(MONDAY + 12 hours);
