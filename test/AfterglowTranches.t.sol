@@ -37,6 +37,7 @@ contract AfterglowTranchesTest is BaseTest {
                 symbol: "glowUSDG-NVDA"
             })
         );
+        _noPremium(market);
         tranches = new AfterglowTranches(IERC4626(address(market)), SENIOR_RATE, 2000, owner, "NVDA");
 
         for (uint256 i; i < 2; ++i) {

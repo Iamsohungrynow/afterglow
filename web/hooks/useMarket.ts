@@ -4,8 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
 import type { Address } from "viem";
 import { marketAbi, savingsAbi, tranchesAbi } from "@/lib/abi";
-import { MARKETS, deploymentFor, type RiskParams } from "@/lib/markets";
-import { SESSIONS, maxBorrowLtv, scheduleSession, type Session } from "@/lib/session";
+import { BASE_RATE_PCT, MARKETS, PROTECTED_TARGET_PCT, deploymentFor, gapModel, premiumAprPct, premiumPpmFromSigma, type RiskParams } from "@/lib/markets";
+import { SESSIONS, maxBorrowLtv, scheduleSession, weekendsBetween, type Session } from "@/lib/session";
 import { useLivePrices } from "./useLivePrices";
 
 export interface MarketView {
@@ -29,6 +29,9 @@ export interface MarketView {
   /** USDG parked in the savings vault by the weekend sweep. */
   idle?: number;
   savingsAprPct?: number;
+  /** Weekend premium per weekend, parts per million of the amount borrowed, and weekends left. */
+  premiumPpm?: number;
+  weekends?: number;
   tranches: TrancheView;
 }
 
@@ -47,11 +50,18 @@ export function utilisation(m: MarketView): number | undefined {
   return Math.max(0, (m.totalAssets - (m.cash ?? 0) - (m.idle ?? 0)) / m.totalAssets);
 }
 
-/** Yearly USDG earned on `capital`: the fixed rate on the lent share plus the savings rate on the swept share. */
+/** Weekend premium for borrowing `amount` now: kept from what the borrower receives. */
+export function premiumFor(m: MarketView, amount: number): number {
+  return m.premiumPpm && m.weekends ? (amount * m.premiumPpm * m.weekends) / 1e6 : 0;
+}
+
+/** Yearly USDG earned on `capital`: the fixed rate plus weekend premiums on the lent share, and the
+ * savings rate on the swept share. */
 export function poolIncome(m: MarketView, capital: number): number {
   const lent = utilisation(m) ?? 0;
   const swept = m.totalAssets ? (m.idle ?? 0) / m.totalAssets : 0;
-  return capital * ((m.aprPct / 100) * lent + ((m.savingsAprPct ?? 0) / 100) * swept);
+  const lendingPct = m.aprPct + (m.premiumPpm ? premiumAprPct(m.premiumPpm) : 0);
+  return capital * ((lendingPct / 100) * lent + ((m.savingsAprPct ?? 0) / 100) * swept);
 }
 
 /** Boost APR implied by the waterfall: pool income minus Protected's target, over Boost capital. */
@@ -109,6 +119,20 @@ export function useMarket(symbol: string, chainId: number | undefined, now: numb
         bigint,
         bigint,
       ];
+      // Weekend premium, on markets that charge one (older deployments do not).
+      let premiumPpm: number | undefined;
+      let weekends: number | undefined;
+      {
+        const [pp, wk] = await client!.multicall({
+          allowFailure: true,
+          contracts: [
+            { address, abi: marketAbi, functionName: "weekendPremiumPpm" },
+            { address, abi: marketAbi, functionName: "weekendsToMaturity" },
+          ],
+        });
+        if (pp.status === "success") premiumPpm = Number(pp.result);
+        if (wk.status === "success") weekends = Number(wk.result);
+      }
       // Weekend sweep, on deployments that have a savings vault.
       let idle: number | undefined;
       let savingsAprPct: number | undefined;
@@ -166,6 +190,8 @@ export function useMarket(symbol: string, chainId: number | undefined, now: numb
         supplyCap: cap > 10n ** 30n ? undefined : Number(cap) / 1e6,
         idle,
         savingsAprPct,
+        premiumPpm,
+        weekends,
       };
       return view;
     },
@@ -180,11 +206,13 @@ export function useMarket(symbol: string, chainId: number | undefined, now: numb
   if (!info || !p || now === undefined) return { data: undefined, isLoading: true, error: null };
   const { session, rampBps } = scheduleSession(now);
   const maturity = previewMaturity(now);
-  const apr = 8;
+  const apr = BASE_RATE_PCT;
   const view: MarketView = {
     symbol,
     mode: "preview",
-    tranches: { seniorAprPct: apr * 0.625, minJuniorBps: 2000 },
+    tranches: { seniorAprPct: PROTECTED_TARGET_PCT, minJuniorBps: 2000 },
+    premiumPpm: premiumPpmFromSigma(gapModel(info.gaps, info.risk.liqLtvBps).sigma),
+    weekends: weekendsBetween(now, maturity),
     session,
     price: p.usd / usdg,
     maxLtvBps: maxBorrowLtv(session, rampBps, info.risk.baseLtvBps, info.risk.weekendLtvBps),

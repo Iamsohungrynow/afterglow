@@ -1,12 +1,7 @@
 import { ShieldCheck, TrendUp } from "@phosphor-icons/react/dist/ssr";
 import type { Icon } from "@phosphor-icons/react";
 import { Reveal } from "./Reveal";
-
-// Same example vault as the Waterfall: 100k USDG, 25% Boost, lent at 8%, Protected targets 5%.
-const RATE = 8;
-const TARGET = 5;
-const BOOST_SHARE = 0.25;
-const BOOST_APY = (RATE - (1 - BOOST_SHARE) * TARGET) / BOOST_SHARE;
+import { BASE, BOOST_APY, BOOST_FROM_PREMIUM, PREMIUM_BP, TARGET } from "./example";
 
 interface Strategy {
   icon: Icon;
@@ -34,10 +29,10 @@ const STRATEGIES: Strategy[] = [
     icon: TrendUp,
     name: "Boost",
     yield: `~${BOOST_APY.toFixed(0)}%`,
-    yieldNote: "fully lent, 25% Boost mix",
+    yieldNote: `fully lent, ~${BOOST_FROM_PREMIUM.toFixed(0)} points of it weekend premium`,
     pitch: "Get paid to cover the weekend.",
     rows: [
-      ["Earns", `Everything above Protected's ${TARGET}%`],
+      ["Earns", `Every weekend premium, plus the interest above Protected's ${TARGET}%`],
       ["Risk", "Takes weekend gap losses first"],
     ],
     hot: true,
@@ -50,7 +45,7 @@ export function Strategies() {
       {/* Where the money goes */}
       <Reveal className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[14px] text-fg-2">
         <span className="rounded-[6px] border border-line-strong px-3 py-1.5 text-fg">
-          Borrowers pay <span className="num">{RATE}%</span> fixed
+          Borrowers pay <span className="num">{BASE}%</span> fixed + a weekend premium
         </span>
         <span aria-hidden className="text-fg-3">→</span>
         <span className="rounded-[6px] border border-line-strong px-3 py-1.5">
@@ -58,11 +53,13 @@ export function Strategies() {
         </span>
         <span aria-hidden className="text-fg-3">→</span>
         <span className="rounded-[6px] border border-glow/50 px-3 py-1.5">
-          Boost keeps <span className="text-glow">the rest</span>
+          Boost keeps <span className="text-glow">the rest, premiums included</span>
         </span>
       </Reveal>
-      <p className="mt-4 text-[14px] text-fg-2">
-        Unlent USDG earns too: it sweeps into a savings vault, and on weekends almost all of it does.
+      <p className="mt-4 max-w-[80ch] text-[14px] leading-relaxed text-fg-2">
+        The premium is priced per stock from its real weekend moves: NVDA pays{" "}
+        <span className="num text-fg">{PREMIUM_BP.toFixed(1)} bp</span> a weekend. Unlent USDG earns too: it sweeps into a
+        savings vault, and on weekends almost all of it does.
       </p>
 
       <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden rounded-[14px] border border-line bg-line md:grid-cols-2">
@@ -91,7 +88,8 @@ export function Strategies() {
         ))}
       </div>
       <p className="mt-4 text-[12.5px] leading-relaxed text-fg-3">
-        Example yields, fully lent. Boost must stay at least 20% of the vault.
+        Example yields, fully lent. When little is lent, Boost tops up Protected first. Boost must stay at least 20% of
+        the vault.
       </p>
     </div>
   );

@@ -84,4 +84,15 @@ contract MockGapGuard {
         require(!broken, "model down");
         return modelled;
     }
+
+    uint32 internal sigma;
+
+    function setSigma(uint32 sigma_) external {
+        sigma = sigma_;
+    }
+
+    function sigmaBps(address) external view returns (uint32) {
+        require(!broken, "model down");
+        return sigma;
+    }
 }

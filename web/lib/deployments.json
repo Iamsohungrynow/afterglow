@@ -5,20 +5,20 @@
     "idleVault": "0x1aE87Eb2133Dd06BD67536CCcD78C071CA0544f2",
     "markets": {
       "AMZN": {
-        "boostToken": "0xd620dBD0b456B13391f804842eEAA86dC628a948",
+        "boostToken": "0x84da5Da5B61F129f79C07c77B3A109547773F1Dc",
         "feed": "0xCAae6b97E49c506A9160DC798097a3daa83d87c0",
-        "market": "0x28e7009346627b4E95087ffc22590aB10c1CAd36",
-        "protectedToken": "0x724Dfde19647c73753C1eecb36E16b42dc53D7a3",
+        "market": "0xFD6Ff0BDAe852C43F078D9F321939bC894b0F253",
+        "protectedToken": "0x1E7190D5d6EEBCa51214239819a560C4727Dc1F7",
         "token": "0x5884aD2f920c162CFBbACc88C9C51AA75eC09E02",
-        "tranches": "0x00265b8d3f746a21Cc5658170fD6c75d8C084AC7"
+        "tranches": "0x4048cA8D90584B439B343DC09c73846548539395"
       },
       "TSLA": {
-        "boostToken": "0x40e5c1884c45e3A26737224712c5Dac87CDD60b3",
+        "boostToken": "0xcbDB947A4102f51aA7FAF8bd40Cf735C05f991Dd",
         "feed": "0x33138fd30e5bB7091370cd0A75454a25F676c097",
-        "market": "0xf947d4cAFb8D33B7eaFD1966cD7eB75bB0F88Af5",
-        "protectedToken": "0x1D35122a71030f37f65938048F6c98BC37d0c61c",
+        "market": "0xC1c055ED09962aC72c46883B8659C92f58FdAf65",
+        "protectedToken": "0x6F91CADfA09890765237732E5017DFCD581e7ba8",
         "token": "0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E",
-        "tranches": "0xc521c9156AB50F5B1A76828dA7f08f322cfE52e7"
+        "tranches": "0x16F5f5fFDAbBB5ee8d641900ac5c14F8c84d38a0"
       }
     },
     "maturity": 1793304000,

@@ -9,7 +9,7 @@ import { TrancheActionCard } from "@/components/earn/TrancheActionCard";
 import { useReadChain } from "@/hooks/useReadChain";
 import { useNow } from "@/hooks/useNow";
 import { boostAprPct, poolIncome, useMarket, utilisation, type MarketView } from "@/hooks/useMarket";
-import { MARKETS, deploymentFor, gapModel } from "@/lib/markets";
+import { MARKETS, deploymentFor, gapModel, premiumAprPct } from "@/lib/markets";
 import { chains } from "@/lib/chains";
 import { daysLeft, fmt, fmtDate, fmtPct, short } from "@/lib/format";
 
@@ -197,6 +197,9 @@ function Waterfall({ m, tranche, util }: { m: MarketView; tranche: Tranche; util
           <div className="num mt-1.5 text-[22px] text-fg">{m.aprPct.toFixed(2)}%</div>
           <div className="num mt-1.5 text-[12px] leading-snug text-fg-2">
             fixed on {lent === undefined ? "lent USDG" : `${fmt(lent, 0)} USDG lent`}
+            {m.premiumPpm !== undefined && (
+              <span className="block">+ {premiumAprPct(m.premiumPpm).toFixed(2)}% weekend premium, priced by GapGuard</span>
+            )}
             {swept > 0 && m.savingsAprPct !== undefined && (
               <span className="block">
                 + {m.savingsAprPct.toFixed(2)}% savings on {fmt(swept, 0)} USDG unlent

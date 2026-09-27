@@ -26,6 +26,12 @@ import {IGapGuard} from "./interfaces/IGapGuard.sol";
 /// the weekly close, borrowing stops while prices are stale, and liquidations wait for a fresh price.
 /// Repaying and adding collateral are always possible.
 ///
+/// Weekend premium: on top of the fixed rate, each loan pays a premium for every weekly close before
+/// maturity, priced from the stock's measured weekend-gap volatility (GapGuard's sigma). It is paid
+/// upfront out of the borrowed amount and earned by lenders evenly until maturity, so it cannot be
+/// captured by depositing just before a borrow. Through the tranche waterfall it lands with Boost,
+/// the tranche that absorbs weekend gap losses first.
+///
 /// Weekend sweep: USDG that is not lent can sit in an ERC-4626 savings vault (`idleVault`). The cash
 /// buffer follows the same clock: while borrowing is possible a larger share stays in the market, and
 /// once the market closes (no new borrowing until the reopen) nearly all of it goes to the vault.
@@ -72,6 +78,13 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         uint256 maxIdle; // most USDG ever placed in the vault
     }
 
+    struct PremiumParams {
+        uint16 perSigmaBps; // premium per weekend as a share of GapGuard's gap sigma (1000 = 10% of sigma)
+        uint16 fallbackBps; // premium per weekend when no GapGuard reading is available
+        uint16 minBps; // floor per weekend
+        uint16 maxBps; // cap per weekend
+    }
+
     IERC20 public immutable collateralToken;
     PhaselockOracle public immutable oracle;
     uint64 public immutable maturity;
@@ -98,6 +111,11 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     /// @notice Idle-vault shares held for lenders. Tracked internally, like `cash`.
     uint256 public idleShares;
     SweepParams public sweepParams;
+    PremiumParams public premiumParams;
+    /// @dev Weekend premiums collected but not yet earned, as of `premiumCheckpoint`. Every loan in the
+    /// market matures at the same time, so the unearned part of all of them shrinks by one common factor.
+    uint256 internal unearnedPremium;
+    uint256 internal premiumCheckpoint;
 
     mapping(address borrower => Position) public positions;
 
@@ -116,6 +134,8 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     event IdleVaultSet(address idleVault);
     event SweepParamsSet(SweepParams params);
     event Swept(uint256 deployed, uint256 recalled, uint256 idleAssets);
+    event PremiumParamsSet(PremiumParams params);
+    event WeekendPremium(address indexed borrower, uint256 weekends, uint256 perWeekendPpm, uint256 premium);
 
     error ZeroAmount();
     error Matured();
@@ -129,6 +149,7 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     error InvalidConfig();
     error NotGuardian();
     error IdleVaultInUse();
+    error PremiumTooHigh();
 
     constructor(Config memory c) ERC20(c.name, c.symbol) ERC4626(c.loanToken) Ownable(c.owner) {
         if (c.maturity <= block.timestamp || address(c.oracle) == address(0) || c.rateWad > WAD) {
@@ -148,6 +169,8 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         supplyCap = c.supplyCap;
         _setRiskParams(c.risk);
         _setSweepParams(SweepParams({liveBufferBps: 2000, closedBufferBps: 500, minMoveBps: 100, maxIdle: type(uint256).max}));
+        _setPremiumParams(PremiumParams({perSigmaBps: 1000, fallbackBps: 10, minBps: 2, maxBps: 50}));
+        premiumCheckpoint = block.timestamp;
     }
 
     // ---------------------------------------------------------------------
@@ -161,7 +184,8 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         emit CollateralDeposited(msg.sender, onBehalf, amount);
     }
 
-    /// @notice Borrow `assets` loan tokens at the market's fixed rate until maturity.
+    /// @notice Borrow `assets` loan tokens at the market's fixed rate until maturity. The weekend
+    /// premium ({premiumFor}) is kept from the amount sent, so `receiver` gets `assets - premium`.
     /// @return face Amount owed at maturity.
     function borrow(uint256 assets, address receiver) external nonReentrant whenNotPaused returns (uint256 face) {
         if (assets == 0) revert ZeroAmount();
@@ -171,18 +195,26 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         if (q.session != PhaselockOracle.Session.Live && q.session != PhaselockOracle.Session.Closing) {
             revert MarketNotLive(q.session);
         }
-        _ensureCash(assets);
+        (uint256 premium, uint256 weekends, uint256 perWeekendPpm) = premiumFor(assets);
+        if (premium >= assets) revert PremiumTooHigh();
+        uint256 sent = assets - premium;
+        _ensureCash(sent);
 
         face = assets.mulDiv(WAD, discountWad(), Math.Rounding.Ceil);
         Position storage p = positions[msg.sender];
         p.face += face;
         totalFace += face;
-        cash -= assets;
+        cash -= sent;
+        if (premium != 0) {
+            unearnedPremium = unearnedPremiums() + premium;
+            premiumCheckpoint = block.timestamp;
+        }
 
         _requireLtv(p, q.price, maxBorrowLtvBps(q));
 
-        IERC20(asset()).safeTransfer(receiver, assets);
+        IERC20(asset()).safeTransfer(receiver, sent);
         emit Borrow(msg.sender, receiver, assets, face);
+        if (premium != 0) emit WeekendPremium(msg.sender, weekends, perWeekendPpm, premium);
     }
 
     /// @notice Repay up to `face` of `borrower`'s debt at today's discounted value. Never pausable.
@@ -338,6 +370,44 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         return p.face != 0 && _isLiquidatable(p, q.price);
     }
 
+    /// @notice Weekly closes between now and maturity: the weekends a new loan is exposed to.
+    function weekendsToMaturity() public view returns (uint256) {
+        if (block.timestamp >= maturity) return 0;
+        uint256 nextClose = block.timestamp + oracle.secondsUntilWeeklyClose();
+        return nextClose > maturity ? 0 : 1 + (maturity - nextClose) / 1 weeks;
+    }
+
+    /// @notice Premium per weekend, in parts per million of the amount borrowed (100 ppm = 1 bp):
+    /// `perSigmaBps` of GapGuard's measured weekend-gap sigma for this stock, clamped to
+    /// [minBps, maxBps]. Without a model reading the fallback applies. Choppier stocks pay more.
+    function weekendPremiumPpm() public view returns (uint256 ppm) {
+        PremiumParams memory p = premiumParams;
+        ppm = uint256(p.fallbackBps) * 100;
+        IGapGuard g = gapGuard;
+        if (address(g) != address(0)) {
+            try g.sigmaBps(address(collateralToken)) returns (uint32 sigma) {
+                if (sigma != 0) ppm = uint256(sigma) * p.perSigmaBps / 100;
+            } catch {}
+        }
+        if (ppm < uint256(p.minBps) * 100) ppm = uint256(p.minBps) * 100;
+        if (ppm > uint256(p.maxBps) * 100) ppm = uint256(p.maxBps) * 100;
+    }
+
+    /// @notice Weekend premium for borrowing `assets` right now: the per-weekend rate times the weekends left.
+    function premiumFor(uint256 assets) public view returns (uint256 premium, uint256 weekends, uint256 perWeekendPpm) {
+        weekends = weekendsToMaturity();
+        perWeekendPpm = weekendPremiumPpm();
+        premium = assets.mulDiv(perWeekendPpm * weekends, 1e6);
+    }
+
+    /// @notice Premiums collected but not yet earned by lenders. They are earned evenly until maturity,
+    /// so a deposit made just before a borrow does not capture them.
+    function unearnedPremiums() public view returns (uint256) {
+        uint256 u = unearnedPremium;
+        if (u == 0 || block.timestamp >= maturity) return 0;
+        return u.mulDiv(maturity - block.timestamp, maturity - premiumCheckpoint);
+    }
+
     /// @notice USDG value of the idle-vault position.
     function idleAssets() public view returns (uint256) {
         uint256 s = idleShares;
@@ -410,8 +480,11 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
     // ERC-4626
     // ---------------------------------------------------------------------
 
+    /// @dev Unearned weekend premiums sit in cash but are not yet the lenders'.
     function totalAssets() public view override returns (uint256) {
-        return cash + idleAssets() + totalFace.mulDiv(discountWad(), WAD, Math.Rounding.Floor);
+        uint256 gross = cash + idleAssets() + totalFace.mulDiv(discountWad(), WAD, Math.Rounding.Floor);
+        uint256 unearned = unearnedPremiums();
+        return gross > unearned ? gross - unearned : 0;
     }
 
     function maxDeposit(address) public view override returns (uint256) {
@@ -485,6 +558,10 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         _setSweepParams(p);
     }
 
+    function setPremiumParams(PremiumParams calldata p) external onlyOwner {
+        _setPremiumParams(p);
+    }
+
     function setSupplyCap(uint256 supplyCap_) external onlyOwner {
         supplyCap = supplyCap_;
         emit SupplyCapSet(supplyCap_);
@@ -525,6 +602,13 @@ contract AfterglowMarket is ERC4626, Ownable2Step, Pausable, ReentrancyGuard {
         if (p.liveBufferBps > BPS || p.closedBufferBps > BPS || p.minMoveBps > BPS) revert InvalidConfig();
         sweepParams = p;
         emit SweepParamsSet(p);
+    }
+
+    /// @dev A weekend can cost at most 5% of the loan.
+    function _setPremiumParams(PremiumParams memory p) internal {
+        if (p.minBps > p.maxBps || p.maxBps > 500 || p.fallbackBps > p.maxBps) revert InvalidConfig();
+        premiumParams = p;
+        emit PremiumParamsSet(p);
     }
 
     /// @dev Makes sure `assets` is held as cash, pulling the shortfall from the idle vault.

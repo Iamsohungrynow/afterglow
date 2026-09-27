@@ -3,14 +3,15 @@
 import { useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { ShieldCheck, TrendUp } from "@phosphor-icons/react";
+import { POOL_APR, TARGET as TARGET_PCT } from "./example";
 
 // Sample vault. Boost must be at least 20% of the vault; here it is 25%.
 const BOOST = 25_000;
 const PROTECTED = 75_000;
 const TOTAL = BOOST + PROTECTED;
 const MAX_LOSS = 40_000;
-const RATE = 0.08;
-const TARGET = 0.05;
+const RATE = POOL_APR / 100; // base rate plus the weekend premium
+const TARGET = TARGET_PCT / 100;
 
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 const SPRING = { type: "spring", stiffness: 260, damping: 32 } as const;
@@ -32,7 +33,7 @@ export function Waterfall() {
   const boostLabel = loss === 0 ? "Boost untouched" : boostLeft > 0 ? "Boost absorbs" : "Boost wiped out";
   const protLabel = protLoss > 0 ? "Protected impaired" : "Protected untouched";
 
-  // Yield side of the same example: whole vault lent at 8%, Protected paid its 5% target first.
+  // Yield side of the same example: whole vault lent (base rate plus weekend premium), Protected paid its target first.
   const boostYield = (TOTAL * RATE - PROTECTED * TARGET) / BOOST;
 
   const setFromPointer = (clientX: number) => {

@@ -25,7 +25,8 @@ import {IERC4626} from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 /// Usage (keystore account created with `cast wallet import deployer --interactive`):
 ///   forge script script/Deploy.s.sol --rpc-url robinhood_testnet --account deployer --broadcast
 ///
-/// Optional env: RATE_WAD (default 0.08e18), TERM_DAYS (28), SUPPLY_CAP (loan-token units),
+/// Optional env: RATE_WAD (base borrow rate, default 0.06e18; each loan also pays a weekend premium priced
+/// from GapGuard), SENIOR_RATE_WAD (Protected target, default 0.05e18), TERM_DAYS (28), SUPPLY_CAP (loan-token units),
 /// GAP_GUARD (address of the deployed GapGuard Stylus contract, wired into every market),
 /// ORACLE (reuse a deployed PhaselockOracle: its USDG feed and any asset feeds it already has are kept),
 /// IDLE_VAULT (ERC-4626 USDG savings vault for the weekend sweep; testnets deploy a DemoSavingsVault
@@ -53,6 +54,7 @@ contract Deploy is Script {
         address usdg;
         uint64 maturity;
         uint256 rateWad;
+        uint256 seniorRateWad;
         uint256 supplyCap;
         address gapGuard;
         address idleVault;
@@ -75,7 +77,8 @@ contract Deploy is Script {
         Params memory p;
         bool demoSavings;
         (p.usdg, stableFeed, assets, defaultCap, demoSavings) = _config(block.chainid);
-        p.rateWad = vm.envOr("RATE_WAD", uint256(0.08e18));
+        p.rateWad = vm.envOr("RATE_WAD", uint256(0.06e18));
+        p.seniorRateWad = vm.envOr("SENIOR_RATE_WAD", uint256(0.05e18));
         p.supplyCap = vm.envOr("SUPPLY_CAP", defaultCap);
         p.maturity = nextThursdayClose(block.timestamp + vm.envOr("TERM_DAYS", uint256(28)) * 1 days);
         p.gapGuard = vm.envOr("GAP_GUARD", address(0));
@@ -151,10 +154,10 @@ contract Deploy is Script {
         );
         if (p.gapGuard != address(0)) market.setGapGuard(IGapGuard(p.gapGuard));
         if (p.idleVault != address(0)) market.setIdleVault(IERC4626(p.idleVault));
-        // Protected / Boost tranches on top of the market: senior targets 5/8 of the market rate,
-        // junior must stay at least 20% of the tranche vault.
+        // Protected / Boost tranches on top of the market: senior targets SENIOR_RATE_WAD, Boost keeps the
+        // rest (including the weekend premiums) and must stay at least 20% of the tranche vault.
         AfterglowTranches tranches =
-            new AfterglowTranches(IERC4626(address(market)), p.rateWad * 5 / 8, 2000, p.deployer, tag);
+            new AfterglowTranches(IERC4626(address(market)), p.seniorRateWad, 2000, p.deployer, tag);
         d = Deployed(
             a.symbol, a.token, feed, address(market), address(tranches), address(tranches.senior()), address(tranches.junior())
         );

@@ -19,12 +19,29 @@ See [docs/DESIGN.md](docs/DESIGN.md) for the problem, market evidence and mechan
 | Contract | Purpose |
 |---|---|
 | [`PhaselockOracle`](src/PhaselockOracle.sol) | Chainlink price + market session (Live / Closing / Closed / Halted), corporate-action and sequencer aware |
-| [`AfterglowMarket`](src/AfterglowMarket.sol) | One collateral, one maturity, one fixed rate; ERC-4626 lender shares; borrow, repay, liquidate; weekend sweep of unlent USDG |
+| [`AfterglowMarket`](src/AfterglowMarket.sol) | One collateral, one maturity, one fixed rate; ERC-4626 lender shares; borrow, repay, liquidate; weekend premium; weekend sweep of unlent USDG |
 | [`AfterglowTranches`](src/AfterglowTranches.sol) | Splits a market's lenders into Protected (senior, fixed target rate, paid first) and Boost (junior, residual yield, first loss); junior must stay at least 20% |
 | [`GapGuard`](stylus/gap-guard/src/lib.rs) (Rust, Arbitrum Stylus) | EWMA model of each stock's Friday-close → Monday-open gaps; tightens the weekend LTV after volatile weekends. Uses OpenZeppelin Contracts for Stylus |
 
 Phaselock knows **when** the market is closed. GapGuard knows **how far it can jump** while closed.
 Prices are quoted in USDG through Chainlink's USDG/USD feed, and everything halts if USDG leaves a ±2% band.
+
+### Weekend premium
+
+The fixed rate pays for the money. The weekend premium pays for the weekend. Every loan pays, upfront, a premium
+for each weekly close before maturity, priced from the stock's measured weekend-gap volatility:
+
+```
+premium per weekend = 10% of GapGuard's gap sigma, clamped to 2-50 bp   (NVDA: sigma 0.78% -> 7.8 bp)
+premium             = amount x premium per weekend x weekends to maturity
+```
+
+Choppier stocks and longer terms pay more. The premium is kept from the amount sent to the borrower and earned by
+lenders evenly until maturity (all loans share one maturity, so this stays O(1)), which means a deposit made just
+before a borrow captures none of it. Protected's target is fixed, so through the waterfall every unit of premium lands
+with Boost, the tranche that absorbs weekend gap losses first. With a 6% base rate and NVDA's 7.8 bp premium, a fully
+lent pool earns about 10%: Protected 5%, Boost about 25%, two thirds of which is weekend premium. When little is lent,
+Boost tops up Protected's target, so its yield moves with utilisation.
 
 ### Weekend sweep
 
@@ -102,7 +119,7 @@ Then pass `GAP_GUARD=<gapGuard>` to the deploy script to wire it into every mark
 On Windows, `cargo-stylus` 0.10.9 needs its unix-only debugger compiled out, and `stylus-proc` is patched
 locally (see [`stylus/patches`](stylus/patches)) so the macro crate links under MSVC.
 
-Optional env: `RATE_WAD` (default `0.08e18`), `TERM_DAYS` (28; maturity snaps to the next Thursday 20:00 UTC),
+Optional env: `RATE_WAD` (base borrow rate, default `0.06e18`), `SENIOR_RATE_WAD` (Protected target, default `0.05e18`), `TERM_DAYS` (28; maturity snaps to the next Thursday 20:00 UTC),
 `SUPPLY_CAP` (loan-token units), `ORACLE` (reuse a deployed Phaselock oracle and the feeds it already has),
 `IDLE_VAULT` (savings vault for the weekend sweep; testnets deploy a `DemoSavingsVault` when unset) and
 `SAVINGS_RESERVE` (USDG the deployer sends to that demo vault as its yield reserve).

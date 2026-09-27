@@ -103,6 +103,22 @@ export function marketsFor(chainId: number | undefined): string[] {
   return d ? Object.keys(d.markets) : ["NVDA", "SPY", "QQQ", "TSLA", "AMZN"];
 }
 
+/** Weekends in a year, for turning a per-weekend premium into a yearly rate. */
+export const WEEKENDS_PER_YEAR = 365 / 7;
+
+/** Premium per weekend in parts per million, as AfterglowMarket.weekendPremiumPpm prices it by default:
+ * 10% of GapGuard's gap sigma (whole bps), clamped to 2-50 bps. */
+export function premiumPpmFromSigma(sigmaBps: number) {
+  return Math.min(5_000, Math.max(200, Math.floor(sigmaBps) * 10));
+}
+
+/** A per-weekend premium as a yearly rate, in %. */
+export const premiumAprPct = (ppm: number) => (ppm / 1e6) * WEEKENDS_PER_YEAR * 100;
+
+/** Base borrow rate and Protected target the deploy script uses (RATE_WAD, SENIOR_RATE_WAD). */
+export const BASE_RATE_PCT = 6;
+export const PROTECTED_TARGET_PCT = 5;
+
 /** Stats a real GapGuard would compute: EWMA sigma (lambda 0.90) and 3-sigma buffer, clamped 5-50%. */
 export function gapModel(gaps: number[], liqLtvBps: number) {
   let v = 0;

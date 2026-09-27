@@ -132,9 +132,11 @@ contract RobinhoodForkTest is Test {
         // 20 NVDA at ~$225 = ~$4,500; borrow ~50%
         uint256 collateralUsd = (20 * uint256(fridayPrice)) / 1e2; // 6-decimal USD
         uint256 amount = collateralUsd / 2;
+        (uint256 premium,,) = market.premiumFor(amount);
+        assertGt(premium, 0); // weekends remain before maturity
         vm.prank(borrower);
         market.borrow(amount, borrower);
-        assertEq(IERC20(USDG).balanceOf(borrower), amount);
+        assertEq(IERC20(USDG).balanceOf(borrower), amount - premium);
         assertGt(market.debtOf(borrower), amount - 1);
     }
 }

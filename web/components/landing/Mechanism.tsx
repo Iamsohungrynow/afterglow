@@ -6,10 +6,11 @@ import type { Session } from "@/lib/session";
 import { GapBars } from "@/components/GapBars";
 import { SessionChip } from "@/components/SessionChip";
 import { Reveal } from "./Reveal";
+import { BASE, PREMIUM_BP } from "./example";
 
-// Worked example from the docs: 10,000 USDG for 28 days at 8% is 10,061.37 due.
+// Worked example: 10,000 USDG for 28 days at the 6% base rate is 10,046.03 due (the weekend premium is kept upfront).
 const P = 10_000;
-const R = 0.08;
+const R = BASE / 100;
 const TERM = 28;
 const owed = (d: number) => P * (1 + (R * d) / 365);
 const usd = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -54,7 +55,7 @@ function FixedRate() {
         </div>
         <div className="num text-[12.5px] leading-relaxed text-fg-3 sm:text-right">
           <div>P = {P.toLocaleString("en-US")} USDG</div>
-          <div>r = 8% a year, t = days / 365</div>
+          <div>r = {BASE}% a year, t = days / 365</div>
         </div>
       </div>
 
@@ -123,7 +124,8 @@ function GapGuardCell() {
     <div className="p-6 md:p-10">
       <h3 className="text-[20px] font-medium tracking-[-0.01em] text-fg">GapGuard, in Rust on Arbitrum Stylus</h3>
       <p className="mt-3 max-w-[48ch] text-[14px] leading-relaxed text-fg-2">
-        Learns how far each stock jumps over the weekend, from real Chainlink prices. It can only tighten the limit.
+        Learns how far each stock jumps over the weekend, from real Chainlink prices. It tightens the limit and prices
+        the weekend premium Boost earns.
       </p>
       <div className="mt-7">
         <GapBars gaps={m.gaps} height={104} />
@@ -132,15 +134,16 @@ function GapGuardCell() {
           <span>real Chainlink prints</span>
         </div>
       </div>
-      <dl className="mt-6 grid grid-cols-3 gap-px overflow-hidden rounded-[10px] border border-line bg-line">
+      <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-[10px] border border-line bg-line sm:grid-cols-4">
         {[
           ["Gap volatility", `${(model.sigma / 100).toFixed(2)}%`],
           ["Model limit", `${(model.weekendLtv / 100).toFixed(2)}%`],
           ["Enforced", `${(enforced / 100).toFixed(0)}%`],
+          ["Premium", `${PREMIUM_BP.toFixed(1)} bp/wk`],
         ].map(([k, v], i) => (
           <div key={k} className="bg-ink p-3.5">
             <dt className="text-[11.5px] text-fg-3">{k}</dt>
-            <dd className={`num mt-1.5 text-[16px] ${i === 2 ? "text-glow" : "text-fg"}`}>{v}</dd>
+            <dd className={`num mt-1.5 text-[16px] ${i >= 2 ? "text-glow" : "text-fg"}`}>{v}</dd>
           </div>
         ))}
       </dl>

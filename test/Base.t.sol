@@ -45,4 +45,11 @@ abstract contract BaseTest is Test {
     function _setPrice(int256 price) internal {
         feed.set(price, block.timestamp);
     }
+
+    /// @dev Suites for the fixed-rate, tranche and sweep mechanics switch the weekend premium off so
+    /// their amounts stay exact; the premium has its own suite (AfterglowPremium.t.sol).
+    function _noPremium(AfterglowMarket m) internal {
+        vm.prank(owner);
+        m.setPremiumParams(AfterglowMarket.PremiumParams(0, 0, 0, 0));
+    }
 }

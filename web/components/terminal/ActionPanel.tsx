@@ -10,7 +10,7 @@ import { erc20Abi, marketAbi, tranchesAbi } from "@/lib/abi";
 import { explorerTx } from "@/lib/chains";
 import { daysLeft, fmt, fmtPct } from "@/lib/format";
 import { fmtDuration, nextTransition } from "@/lib/session";
-import { boostAprPct, type MarketView } from "@/hooks/useMarket";
+import { boostAprPct, premiumFor, type MarketView } from "@/hooks/useMarket";
 import type { PositionView } from "@/hooks/usePosition";
 import { useAfterglowAccount, type Call } from "./AccountProvider";
 
@@ -77,7 +77,8 @@ function BorrowForm({ m, pos, now }: { m?: MarketView; pos?: PositionView; now?:
     const maxBorrow = Math.max(0, (value * m.maxLtvBps) / 10_000 - (pos?.debtNow ?? 0));
     const owed = (pos?.face ?? 0) + add / m.discount;
     const liqPrice = collateral > 0 ? debt / (collateral * (m.risk.liqLtvBps / 10_000)) : undefined;
-    return { collateral, value, debt, ltv, maxBorrow, owed, liqPrice };
+    const premium = premiumFor(m, add);
+    return { collateral, value, debt, ltv, maxBorrow, owed, liqPrice, premium };
   }, [m, pos, addColl, add]);
 
   const open = m?.session === "Live" || m?.session === "Closing";
@@ -148,6 +149,13 @@ function BorrowForm({ m, pos, now }: { m?: MarketView; pos?: PositionView; now?:
 
       <Summary>
         <Row k="Collateral value" v={calc ? `${fmt(calc.value)} USDG` : "-"} />
+        {m?.premiumPpm !== undefined && (
+          <Row
+            k={`Weekend premium, ${m.weekends ?? 0} weekend${m.weekends === 1 ? "" : "s"} × ${(m.premiumPpm / 100).toFixed(1)} bp`}
+            v={calc && add > 0 ? `${fmt(calc.premium)} USDG` : "-"}
+          />
+        )}
+        {m?.premiumPpm !== undefined && <Row k="You receive" v={calc && add > 0 ? `${fmt(add - calc.premium)} USDG` : "-"} />}
         <Row k="Owed at maturity" v={calc ? `${fmt(calc.owed)} USDG` : "-"} strong />
         <Row k="Liquidation price" v={calc?.liqPrice ? `${fmt(calc.liqPrice)} USDG` : "-"} />
         <Row k="Weekend LTV" v={m ? fmtPct(m.weekendLtvBps) : "-"} />
@@ -310,14 +318,21 @@ function YieldSource({ m }: { m?: MarketView }) {
       <ol className="mt-2.5 grid gap-2 text-[12px] leading-relaxed text-fg-2">
         <li>
           <span className="num text-fg">1.</span> Borrowers pay a fixed <span className="num text-fg">{m ? `${m.aprPct.toFixed(2)}%` : "-"}</span> on the USDG they borrow, secured by
-          over-collateralised {m?.symbol ?? "stock"} tokens.
+          over-collateralised {m?.symbol ?? "stock"} tokens
+          {m?.premiumPpm !== undefined && (
+            <>
+              , plus a weekend premium of <span className="num text-fg">{(m.premiumPpm / 100).toFixed(1)} bp</span> a weekend, priced by GapGuard from{" "}
+              {m.symbol}&apos;s real weekend moves
+            </>
+          )}
+          .
         </li>
         <li>
           <span className="num text-fg">2.</span> Protected is paid first, up to <span className="num text-fg">{t ? `${t.seniorAprPct.toFixed(2)}%` : "-"}</span>.
         </li>
         <li>
-          <span className="num text-fg">3.</span> Boost keeps everything above that, and takes any loss first (for example a Monday gap
-          that leaves bad debt).
+          <span className="num text-fg">3.</span> Boost keeps everything above that, weekend premiums included, and takes any loss first
+          (for example a Monday gap that leaves bad debt).
         </li>
       </ol>
       <div className="mt-3 flex justify-between text-[11.5px] text-fg-3">

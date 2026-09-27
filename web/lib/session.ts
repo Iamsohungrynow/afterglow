@@ -39,6 +39,13 @@ export function secondsUntilClose(t: number, s: Schedule = DEFAULT_SCHEDULE) {
   return w < s.weeklyCloseOffset ? s.weeklyCloseOffset - w : WEEK - w + s.weeklyCloseOffset;
 }
 
+/** Weekly closes after `t` and no later than `until`: the weekends a loan taken at `t` is exposed to
+ * (AfterglowMarket.weekendsToMaturity). */
+export function weekendsBetween(t: number, until: number, s: Schedule = DEFAULT_SCHEDULE) {
+  const next = t + secondsUntilClose(t, s);
+  return next > until ? 0 : 1 + Math.floor((until - next) / WEEK);
+}
+
 export function secondsUntilOpen(t: number, s: Schedule = DEFAULT_SCHEDULE) {
   const open = (s.weeklyCloseOffset + s.weekendLength) % WEEK;
   const w = intoWeek(t);

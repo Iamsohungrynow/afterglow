@@ -36,6 +36,7 @@ contract AfterglowMarketTest is BaseTest {
                 symbol: "glowUSDG-NVDA"
             })
         );
+        _noPremium(market);
 
         usdg.mint(lender, LEND);
         vm.startPrank(lender);

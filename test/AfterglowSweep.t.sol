@@ -53,6 +53,7 @@ contract AfterglowSweepTest is BaseTest {
 
         vm.prank(owner);
         market.setIdleVault(IERC4626(address(savings)));
+        _noPremium(market);
     }
 
     function _weekend() internal {
