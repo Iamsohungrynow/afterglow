@@ -512,17 +512,22 @@ function Submit({ m, blocked, label, build, onDone }: { m?: MarketView; blocked?
     }
   };
 
-  const disabled = Boolean(blocked) || state.busy || (acct.gasless && !acct.owner);
+  const needOwner = acct.gasless && !acct.owner;
+  const canRetry = needOwner && !acct.preparing;
+  const disabled = !canRetry && (Boolean(blocked) || state.busy || needOwner);
   return (
     <div>
       {gasRow}
       <button
         disabled={disabled}
-        onClick={run}
+        onClick={canRetry ? acct.retrySmart : run}
         className={`${btn} ${disabled ? "cursor-not-allowed bg-white/[0.06] text-fg-3" : "bg-glow text-ink shadow-[0_0_24px_-6px_rgb(233_161_94/0.55)] hover:bg-[#f0b173]"}`}
       >
-        {state.busy ? "Confirm in wallet" : acct.gasless && !acct.owner ? (acct.preparing ? "Preparing smart account" : "Smart account unavailable") : blocked ?? label}
+        {state.busy ? "Confirm in wallet" : needOwner ? (acct.preparing ? "Preparing smart account…" : "Retry smart account") : blocked ?? label}
       </button>
+      {canRetry && acct.smartError && (
+        <p className="mt-2 text-center text-[12px] leading-snug text-halt">Smart account: {acct.smartError.slice(0, 140)}</p>
+      )}
       {state.hash && (
         <a href={explorerTx(acct.chainId, state.hash)} target="_blank" rel="noreferrer" className="mt-2 flex items-center justify-center gap-1 text-[12px] text-live">
           Confirmed <ArrowSquareOut size={12} />

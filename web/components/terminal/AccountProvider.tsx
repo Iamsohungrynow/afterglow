@@ -21,6 +21,9 @@ interface AccountState {
   gaslessAvailable: boolean;
   setGasless: (v: boolean) => void;
   preparing: boolean;
+  /** Why the smart account could not be built, if it failed. */
+  smartError?: string;
+  retrySmart: () => void;
   execute: (calls: Call[]) => Promise<Hex>;
 }
 
@@ -29,29 +32,42 @@ const Ctx = createContext<AccountState | null>(null);
 export function AccountProvider({ children }: { children: React.ReactNode }) {
   const { address: eoa } = useAccount();
   const chainId = useChainId();
-  const { data: walletClient } = useWalletClient();
+  // Ask for the wallet client on the current chain, so a network switch hands us a fresh one.
+  const { data: walletClient } = useWalletClient({ chainId });
   const publicClient = usePublicClient();
   const gaslessAvailable = zerodevEnabled && SPONSORED_CHAINS.has(chainId);
   const [gasless, setGasless] = useState(true);
   const [kernel, setKernel] = useState<KernelClient>();
   const [preparing, setPreparing] = useState(false);
+  const [smartError, setSmartError] = useState<string>();
+  const [attempt, setAttempt] = useState(0);
+  const retrySmart = useCallback(() => setAttempt((a) => a + 1), []);
 
-  // Build the Kernel smart account for the connected wallet when gasless mode is on.
+  // Build the Kernel smart account for the connected wallet when gasless mode is on. Waits until the
+  // wallet client is on the page's chain (right after a network switch it can still be on the old one).
   useEffect(() => {
     setKernel(undefined);
-    if (!gaslessAvailable || !gasless || !walletClient || !eoa) return;
+    setSmartError(undefined);
+    if (!gaslessAvailable || !gasless || !eoa) return;
+    if (!walletClient || walletClient.chain?.id !== chainId) {
+      setPreparing(true);
+      return;
+    }
     const chain = chains.find((c) => c.id === chainId);
     if (!chain) return;
     let cancelled = false;
     setPreparing(true);
     createSmartAccount(chain, walletClient)
       .then((k) => !cancelled && setKernel(k))
-      .catch((e) => console.error("smart account", e))
+      .catch((e) => {
+        console.error("smart account", e);
+        if (!cancelled) setSmartError((e as { shortMessage?: string })?.shortMessage ?? (e as Error)?.message ?? "Unknown error");
+      })
       .finally(() => !cancelled && setPreparing(false));
     return () => {
       cancelled = true;
     };
-  }, [gaslessAvailable, gasless, walletClient, eoa, chainId]);
+  }, [gaslessAvailable, gasless, walletClient, eoa, chainId, attempt]);
 
   const useSmart = gaslessAvailable && gasless;
   const smart = kernel?.account.address;
@@ -83,9 +99,11 @@ export function AccountProvider({ children }: { children: React.ReactNode }) {
       gaslessAvailable,
       setGasless,
       preparing,
+      smartError,
+      retrySmart,
       execute,
     }),
-    [eoa, smart, useSmart, chainId, gaslessAvailable, preparing, execute],
+    [eoa, smart, useSmart, chainId, gaslessAvailable, preparing, smartError, retrySmart, execute],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

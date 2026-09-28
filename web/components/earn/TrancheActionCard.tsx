@@ -122,18 +122,24 @@ export function TrancheActionCard({ m, tranche, chainId }: { m?: MarketView; tra
     );
   } else {
     const needOwner = acct.gasless && !acct.owner;
-    const disabled = !valid || Boolean(blocked) || state.busy || needOwner;
+    const canRetry = needOwner && !acct.preparing;
+    const disabled = !canRetry && (!valid || Boolean(blocked) || state.busy || needOwner);
     const label = state.busy
       ? "Confirm in wallet"
       : needOwner
         ? acct.preparing
-          ? "Preparing smart account"
-          : "Smart account unavailable"
+          ? "Preparing smart account…"
+          : "Retry smart account"
         : blocked ?? (valid ? `${mode} ${fmt(amt)} USDG` : "Enter an amount");
     action = (
-      <button disabled={disabled} onClick={run} className={`${btn} ${disabled ? off : "bg-glow text-ink hover:bg-[#f0b173]"}`}>
-        {label}
-      </button>
+      <>
+        <button disabled={disabled} onClick={canRetry ? acct.retrySmart : run} className={`${btn} ${disabled ? off : "bg-glow text-ink hover:bg-[#f0b173]"}`}>
+          {label}
+        </button>
+        {canRetry && acct.smartError && (
+          <p className="text-center text-[12px] leading-snug text-halt">Smart account: {acct.smartError.slice(0, 140)}</p>
+        )}
+      </>
     );
   }
 

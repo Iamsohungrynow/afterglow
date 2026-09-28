@@ -138,7 +138,7 @@ export function ConnectWalletButton({ variant = "pill" }: { variant?: "pill" | "
 export function ConnectButton() {
   const { isConnected } = useAccount();
   const { disconnect } = useDisconnect();
-  const { eoa, smart, gasless } = useAfterglowAccount();
+  const { eoa, smart, gasless, preparing, smartError } = useAfterglowAccount();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<string>();
 
@@ -158,7 +158,8 @@ export function ConnectButton() {
         className="flex h-8 items-center gap-2 rounded-full border border-line-strong px-3 text-[12px] transition hover:border-fg-3"
       >
         <span className="num text-fg">{short(gasless && smart ? smart : eoa)}</span>
-        {gasless && <span className="text-[11px] text-glow">smart account</span>}
+        {gasless && smart && <span className="text-[11px] text-glow">smart account</span>}
+        {gasless && !smart && <span className="text-[11px] text-fg-3">{preparing ? "preparing…" : smartError ? "gasless off" : ""}</span>}
         <CaretDown size={11} className="text-fg-3" />
       </button>
       {open && (
