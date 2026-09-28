@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>Fixed-rate USDG credit against tokenized stocks, built for the weekend.</b><br>
+  <b>Fixed-rate USDG lending against tokenized stocks on Robinhood Chain.</b><br>
   A lending market that follows the stock market's clock, prices weekend risk, and pays it to the lenders who choose to carry it.
 </p>
 
