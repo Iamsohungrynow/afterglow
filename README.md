@@ -111,7 +111,7 @@ plus **5 fork tests** against live Robinhood Chain stock tokens and Chainlink fe
 
 ## Deployments
 
-**Robinhood Chain testnet (46630)**. All contracts verified on Blockscout.
+**Robinhood Chain testnet (46630)**. Solidity contracts verified on Blockscout. GapGuard (Stylus) is deployed from the source in [`stylus/gap-guard`](stylus/gap-guard); this Blockscout instance doesn't support Stylus verification yet.
 
 | Contract | Address |
 |---|---|
